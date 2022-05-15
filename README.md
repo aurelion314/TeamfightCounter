@@ -1,2 +1,2 @@
-# teamfightcounter
+# TeamfightCounter
 TeamfightCounter addon for WoW
