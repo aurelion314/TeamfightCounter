@@ -121,7 +121,7 @@ function Counter:addPlayer(player)
     end
     self.zone = player.zone
     if not playerList[player.fullName] then
-        addon:updateGroups()
+        -- addon:updateGroups() --Temporarily disabling for performance
     end
 end
 
@@ -238,7 +238,10 @@ function addon:updateGroups()
     end
     
     self:getBattlegroundPlayerData()
-    missingEnemies = TFC.utils:deepCopy(playerData.enemy)
+    missingEnemies = {}
+    for i, player in pairs(playerData.enemy) do
+        missingEnemies[player.fullName] = player
+    end
 
     if next(remainingCounters) == nil then
         -- addon:Debug('No counters')
@@ -691,9 +694,9 @@ end
 function addon:getBattlegroundPlayerData(force)
     local BFNumScores = GetNumBattlefieldScores()
     if (playerData and playerData.count == BFNumScores) and not force then return playerData end
-    playerData = {['ally'] = {}, ['enemy'] = {}, count=0}
+    playerData = {ally = {}, enemy = {}, count=0}
     if not (select(2, IsInInstance()) == "pvp") then return playerData end
-    
+
     local selfPlayerFaction = UnitFactionGroup('player')
     addon:Debug('Numscores', BFNumScores)
     for i = 1, BFNumScores do
