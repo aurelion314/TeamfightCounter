@@ -8,6 +8,7 @@ TFC.MainOptionTable = {
 	set = function(info, value)
         TFC.settings[info[#info]] = value
 		TFC.addon:refreshCallback()
+		TFC.addon:countNearbyFactions()
 		TFC.addon:Debug("Updated Setting", info[#info], value)
     end,
 	args = {
