@@ -1,25 +1,32 @@
-
 local AddonName, TFC = ...
 _G['TeamfightCounter'] = CreateFrame('Frame')
 local addon = _G['TeamfightCounter']
 local TeamfightCounterWindow = _G['TeamfightCounterWindow']
+TFC.version = 0.1
 TFC.addon = addon
 TFC.timer = 0
 
 local removedList = {}
 local playerData = nil
+local playerBGData = {}
 local playerList = {}
-local displayFrame 
+local displayFrame
 local counters = {}
 local groups = {}
 local POIList = nil
 local selfPlayer = nil
+local deadEnemies = {}
 local missingEnemies = {}
 local refreshFrames = false
 
 
+--class to handle groups
+local groupMaster = {}
 
------------------------ SelfCounter tracks who the player sees
+--A group tracks everything about that group. The players, counter, frames, etc.
+local group = {}
+
+----------------------- SelfCounter tracks who each ally sees
 local selfCounter = {}
 function selfCounter:addFrame(frame)
     if self.frames[frame.fullName] == nil then
@@ -80,14 +87,14 @@ function selfCounter:reset()
     self.nearby = {}
 end
 
-------------------Counter tracks who each ally sees. Updated by addonMsgs 
+------------------Counter tracks who each ally sees. Updated by addonMsgs
 Counter = {}
-function Counter:new (name)
+function Counter:new(name)
     addon:updateSelfPlayer()
     local obj = {}
     setmetatable(obj, self)
     self.__index = self
-    
+
     obj.name = name
     obj.zone = nil
     obj.players = {}
@@ -104,7 +111,7 @@ function Counter:new (name)
     counterOwner.zone = nil
     obj.isSelfOwned = selfPlayer.fullName == counterOwner.fullName
     obj:addPlayer(counterOwner)
-    
+
     return obj
 end
 
@@ -136,7 +143,7 @@ end
 
 function Counter:removePlayer(player)
     if self.players[player.fullName] == nil then
-        addon:Debug("(Counter "..self.name ..") Can't remove because not in list: ", player.fullName)
+        addon:Debug("(Counter " .. self.name .. ") Can't remove because not in list: ", player.fullName)
         return
     end
     if self.players[player.fullName].isAlly then
@@ -145,10 +152,9 @@ function Counter:removePlayer(player)
         self.enemyCount = self.enemyCount - 1
     end
     self.zone = player.zone
-    
+
     self.players[player.fullName] = nil
 end
-
 
 -------------------------Addon MSGs
 --Send an addon message to group
@@ -156,8 +162,8 @@ function addon:SendMsg(frame, msgType)
     local zone = self:getZoneId()
 
     -- self:Debug("MSG", frame.name, frame.realm, frame.class)
-    
-    local msg = msgType .. ";" .. frame['fullName'] .. ";" .. (frame['isAlly'] and '1' or '0') .. ";" .. frame['class'] ..";".. (zone or "")
+
+    local msg = TFC.version .. ";" .. msgType .. ";" .. frame['fullName'] .. ";" .. (frame['isAlly'] and '1' or '0') .. ";" .. frame['class'] .. ";" .. (zone or "") 
     if (select(2, IsInInstance()) == "pvp") then
         C_ChatInfo.SendAddonMessage("TFC", msg, "INSTANCE_CHAT")
     else
@@ -169,9 +175,9 @@ end
 function addon:DecodeMsg(msg)
     local data = TFC.utils:splitString(msg, ';')
     -- self:Debug("ReceiveMSG:",msg)
-    
-    local msgType, player = '', {}
-    msgType, player['fullName'], player['isAlly'],player['class'], player['zone'] = data[1], data[2], data[3], data[4], data[5]
+
+    local msgType, player, version = '', {}, nil
+    version, msgType, player['fullName'], player['isAlly'], player['class'], player['zone'] = data[1], data[2], data[3], data[4], data[5], data[6]
     player['isAlly'] = (player['isAlly'] == '1') and true or false
     if not player['zone'] or player['zone'] == "" then
         player['zone'] = nil
@@ -182,6 +188,7 @@ function addon:DecodeMsg(msg)
 
     return msgType, player
 end
+
 --------------------------------------------
 
 --Converts zone to numberic zone ID if zone is passed. Otherwise return current players zone ID.
@@ -200,14 +207,14 @@ end
 
 function addon:updateSelfPlayer(force)
     local doUpdate = false
-    local player = { fullName = self:getFullName(GetUnitName('player') .. '-' .. (GetRealmName() or "")), name = GetUnitName('player'), realm = GetRealmName(), isAlly = true}
+    local player = { fullName = self:getFullName(GetUnitName('player') .. '-' .. (GetRealmName() or "")), name = GetUnitName('player'), realm = GetRealmName(), isAlly = true }
     player['class'] = select(2, UnitClass('player'))
     player['isDead'] = UnitIsDeadOrGhost('player')
 
     player['zone'] = self:getZoneId()
-    
+
     --loop player keys
-    if force or not selfPlayer then 
+    if force or not selfPlayer then
         doUpdate = true
     else
         for k, v in pairs(player) do
@@ -236,11 +243,13 @@ function addon:updateGroups()
             table.insert(remainingCounters, counter)
         end
     end
-    
+
     self:getBattlegroundPlayerData()
     missingEnemies = {}
     for i, player in pairs(playerData.enemy) do
-        missingEnemies[player.fullName] = player
+        if deadEnemies['player.fullName'] == nil then
+            missingEnemies[player.fullName] = player
+        end
     end
 
     if next(remainingCounters) == nil then
@@ -250,7 +259,7 @@ function addon:updateGroups()
     end
 
     --First off, clear groups and make a fresh one.
-    groups = {TFC.utils:deepCopy(table.remove(remainingCounters, 1))}
+    groups = { TFC.utils:deepCopy(table.remove(remainingCounters, 1)) }
     --Keep checking counters until we remove all of them
     while next(remainingCounters) ~= nil do
         for i, group in pairs(groups) do
@@ -275,7 +284,7 @@ function addon:updateGroups()
                     end
                 end
             end
-            
+
         end
         --do we have any counters left?
         if next(remainingCounters) ~= nil then
@@ -308,15 +317,15 @@ function addon:showMissingEnemies()
         displayFrame['missingEnemyFrame']:SetWidth(50)
         displayFrame['missingEnemyFrame']:SetHeight(10)
     end
-    
+
     if TFC.settings.showMissing then
         displayFrame['missingEnemyFrame']:Show()
     else
         displayFrame['missingEnemyFrame']:Hide()
         return
     end
-    
-    self:showClassBlips({players=missingEnemies}, displayFrame['missingEnemyFrame'], 'missing')
+
+    self:showClassBlips({ players = missingEnemies }, displayFrame['missingEnemyFrame'], 'missing')
 end
 
 function addon:showMissingEnemiesOnMap()
@@ -327,54 +336,54 @@ function addon:showMissingEnemiesOnMap()
         _G['missingEnemyMapFrame']:SetHeight(10)
         _G['missingEnemyMapFrame']:SetPoint("CENTER", 'REPorterFrame', "TOP", 0, -5)
     end
-    
+
     if TFC.settings.showMissing then
         _G['missingEnemyMapFrame']:Show()
     else
         _G['missingEnemyMapFrame']:Hide()
         return
     end
-    
-    self:showClassBlips({players=missingEnemies}, _G['missingEnemyMapFrame'], 'missing')
+
+    self:showClassBlips({ players = missingEnemies }, _G['missingEnemyMapFrame'], 'missing')
 end
 
 function addon:showGroups()
     self:cleanGroupFrames('frame')
-    
+
     local height = -30
     local blipWidth = 6
     -- for i, group in pairs(groups) do
-    for i, group in TFC.utils:spairs(groups, function(t,a,b) return t[a].isSelfOwned end) do
+    for i, group in TFC.utils:spairs(groups, function(t, a, b) return t[a].isSelfOwned end) do
         -- self:Debug('Showing group', i)
         local msg = ""
         msg = msg .. group.allyCount .. "v" .. group.enemyCount .. ""
-        local xMain, yMain = 0, -15 + (i-1)*height
-        if displayFrame['displayGroup'..i] == nil then
+        local xMain, yMain = 0, -15 + (i - 1) * height
+        if displayFrame['displayGroup' .. i] == nil then
 
-            displayFrame['displayGroup'..i] = CreateFrame("Frame", 'TFCGroupCounter'..i, displayFrame) 
-            displayFrame['displayGroup'..i]:SetPoint("CENTER", displayFrame:GetName(), "TOP", xMain, yMain)
-            displayFrame['displayGroup'..i]:SetWidth(50)
-            displayFrame['displayGroup'..i]:SetHeight(height)
-            local groupCounterFrame = displayFrame['displayGroup'..i]
+            displayFrame['displayGroup' .. i] = CreateFrame("Frame", 'TFCGroupCounter' .. i, displayFrame)
+            displayFrame['displayGroup' .. i]:SetPoint("CENTER", displayFrame:GetName(), "TOP", xMain, yMain)
+            displayFrame['displayGroup' .. i]:SetWidth(50)
+            displayFrame['displayGroup' .. i]:SetHeight(height)
+            local groupCounterFrame = displayFrame['displayGroup' .. i]
 
             if groupCounterFrame['groupText'] == nil then
-                groupCounterFrame['groupText'] = groupCounterFrame:CreateFontString(nil,"OVERLAY", "GameTooltipText") 
+                groupCounterFrame['groupText'] = groupCounterFrame:CreateFontString(nil, "OVERLAY", "GameTooltipText")
             end
             local groupText = groupCounterFrame['groupText']
-            groupText:SetPoint("CENTER",0,0)
-            groupText:SetTextColor(0.5,0.5,0.5,1)
+            groupText:SetPoint("CENTER", 0, 0)
+            groupText:SetTextColor(0.5, 0.5, 0.5, 1)
             groupText:SetText('1v0')
             groupText:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
         end
-        local groupCounterFrame = displayFrame['displayGroup'..i]
+        local groupCounterFrame = displayFrame['displayGroup' .. i]
         local groupText = groupCounterFrame['groupText']
         --set color depending on ally vs enemy
         if group.allyCount > group.enemyCount then
-            groupText:SetTextColor(0,1,0,1)
+            groupText:SetTextColor(0, 1, 0, 1)
         elseif group.allyCount < group.enemyCount then
-            groupText:SetTextColor(1,0,0,1)
+            groupText:SetTextColor(1, 0, 0, 1)
         else
-            groupText:SetTextColor(0.5,0.5,0.5,1)
+            groupText:SetTextColor(0.5, 0.5, 0.5, 1)
         end
         groupText:SetText(msg)
         groupCounterFrame:Show()
@@ -400,7 +409,7 @@ function addon:showGroupsOnMap()
     end
     local topFrames = {}
     -- for i, group in pairs(groups) do
-    for i, group in TFC.utils:spairs(groups, function(t,a,b) return t[a].isSelfOwned end) do
+    for i, group in TFC.utils:spairs(groups, function(t, a, b) return t[a].isSelfOwned end) do
         if group.zone then
             local x, y = self:getGroupPosition(group)
             -- addon:Debug('Group has zone:', group.zone, x, y)
@@ -410,9 +419,9 @@ function addon:showGroupsOnMap()
             table.insert(topFrames, group)
         end
     end
-    local topCount, width, height  = #topFrames, 35, 15
-    local xStart = width - topCount * width
-    local yStart = -20
+    local topCount, width, height = #topFrames, 35, 15
+    local xStart                  = width - topCount * width
+    local yStart                  = -20
     for i, group in pairs(topFrames) do
         -- local x = xStart + (i - 1) * width
         -- local y = -25
@@ -426,7 +435,7 @@ end
 function addon:showGroupOnMap(group, x, y, parentFrameName)
     local fontSize = group.zone and 16 or 12
     local alpha = group.zone and 1 or 0.75
-    local frameName = "TFCGroupFrame"..parentFrameName..group['id']
+    local frameName = "TFCGroupFrame" .. parentFrameName .. group['id']
     if _G[frameName] == nil then
         local frameMain = CreateFrame("Frame", frameName, _G[parentFrameName])
         frameMain:SetFrameLevel(16) --was 10
@@ -441,23 +450,23 @@ function addon:showGroupOnMap(group, x, y, parentFrameName)
         frameMain:SetPoint("CENTER", parentFrameName, "TOPLEFT", x, y)
     end
     frameMain:Show()
-    
-    local textName = "TFCGroupText"..group['id']
+
+    local textName = "TFCGroupText" .. group['id']
     if frameMain[textName] == nil then
-        local frameText = frameMain:CreateFontString("Frame",textName, frameMain)
+        local frameText = frameMain:CreateFontString("Frame", textName, frameMain)
         frameText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
-        frameText:SetPoint("CENTER",0,0)
+        frameText:SetPoint("CENTER", 0, 0)
         frameMain[textName] = frameText
     end
     local frameText = frameMain[textName]
     local msg = group.allyCount .. "v" .. group.enemyCount
     frameText:SetText(msg)
     if group.allyCount > group.enemyCount then
-        frameText:SetTextColor(0,1,0,alpha)
+        frameText:SetTextColor(0, 1, 0, alpha)
     elseif group.allyCount < group.enemyCount then
-        frameText:SetTextColor(1,0,0,alpha)
+        frameText:SetTextColor(1, 0, 0, alpha)
     else
-        frameText:SetTextColor(0.5,0.5,0.5,alpha)
+        frameText:SetTextColor(0.5, 0.5, 0.5, alpha)
     end
 
     self:showClassBlips(group, frameMain, group.zone and 'enemy' or nil)
@@ -487,20 +496,20 @@ function addon:showClassBlips(group, parentFrame, reaction)
     local blipWidth = 6
     if not reaction or reaction == 'ally' then
         local playerNum = 1
-        for i, player in TFC.utils:spairs(ally, function(t,a,b) return (TFC.classOrder[t[b].class] or 0) < (TFC.classOrder[t[a].class] or 0) end) do
+        for i, player in TFC.utils:spairs(ally, function(t, a, b) return (TFC.classOrder[t[b].class] or 0) < (TFC.classOrder[t[a].class] or 0) end) do
             if player.class then
                 playerNum = playerNum + 1
-                x, y = (-15) - blipWidth*playerNum, 0
+                x, y = (-15) - blipWidth * playerNum, 0
                 self:showClassBlip(parentFrame, player, x, y, 'ally', playerNum)
             end
         end
     end
     if not reaction or reaction == 'enemy' then
         local playerNum = 1
-        for i, player in TFC.utils:spairs(enemy, function(t,a,b) return (TFC.classOrder[t[b].class] or 0) < (TFC.classOrder[t[a].class] or 0) end) do
+        for i, player in TFC.utils:spairs(enemy, function(t, a, b) return (TFC.classOrder[t[b].class] or 0) < (TFC.classOrder[t[a].class] or 0) end) do
             if player.class then
                 playerNum = playerNum + 1
-                x, y = (13) + blipWidth*playerNum, 0
+                x, y = (13) + blipWidth * playerNum, 0
                 self:showClassBlip(parentFrame, player, x, y, 'enemy', playerNum)
             end
         end
@@ -514,10 +523,10 @@ function addon:showClassBlips(group, parentFrame, reaction)
                 playerCount = playerCount + 1
             end
         end
-        for i, player in TFC.utils:spairs(group.players, function(t,a,b) return (TFC.classOrder[t[b].class] or 0) < (TFC.classOrder[t[a].class] or 0) end) do
+        for i, player in TFC.utils:spairs(group.players, function(t, a, b) return (TFC.classOrder[t[b].class] or 0) < (TFC.classOrder[t[a].class] or 0) end) do
             if player.class then
                 playerNum = playerNum + 1
-                x, y = -(blipWidth*(playerCount+1))/2 + blipWidth*playerNum, 0
+                x, y = -(blipWidth * (playerCount + 1)) / 2 + blipWidth * playerNum, 0
                 self:showClassBlip(parentFrame, player, x, y, 'enemy', playerNum, "Interface\\Addons\\TeamfightCounter\\textures\\BlipCombat")
             end
         end
@@ -525,20 +534,20 @@ function addon:showClassBlips(group, parentFrame, reaction)
 end
 
 function addon:showClassBlip(parentFrame, player, x, y, faction, playerNum, texture)
-    if parentFrame["TFCBlipTexture"..faction..playerNum] == nil then
-        parentFrame["TFCBlipTexture"..faction..playerNum] = parentFrame:CreateTexture("TFCBlipTexture"..parentFrame:GetName()..faction..playerNum)
+    if parentFrame["TFCBlipTexture" .. faction .. playerNum] == nil then
+        parentFrame["TFCBlipTexture" .. faction .. playerNum] = parentFrame:CreateTexture("TFCBlipTexture" .. parentFrame:GetName() .. faction .. playerNum)
         if not texture then
-            parentFrame["TFCBlipTexture"..faction..playerNum]:SetTexture("Interface\\Addons\\TeamfightCounter\\textures\\BlipNormal")
+            parentFrame["TFCBlipTexture" .. faction .. playerNum]:SetTexture("Interface\\Addons\\TeamfightCounter\\textures\\BlipNormal")
         else
-            parentFrame["TFCBlipTexture"..faction..playerNum]:SetTexture(texture)
+            parentFrame["TFCBlipTexture" .. faction .. playerNum]:SetTexture(texture)
         end
     end
-    local texture = parentFrame["TFCBlipTexture"..faction..playerNum]
+    local texture = parentFrame["TFCBlipTexture" .. faction .. playerNum]
     texture:SetPoint("CENTER", parentFrame, x, y)
     texture:SetWidth(10)
     texture:SetHeight(10)
     local r, g, b = GetClassColor(player.class)
-    texture:SetVertexColor(r,g,b,0.7)
+    texture:SetVertexColor(r, g, b, 0.7)
     texture:Show()
     table.insert(parentFrame.blips, texture)
 end
@@ -552,7 +561,7 @@ function addon:getGroupPosition(group)
         local POIinfo = POIList[zone]
         if POIinfo then
             local x, y = POIinfo.position:GetXY()
-            return self:getRealCoords(x, y-0.04)
+            return self:getRealCoords(x, y - 0.04)
         end
     end
 
@@ -560,16 +569,16 @@ function addon:getGroupPosition(group)
 end
 
 function addon:getRealCoords(rawX, rawY)
-	return rawX * 783, -rawY * 522
+    return rawX * 783, -rawY * 522
 end
 
 function addon:cleanGroupFrames(groupType)
-    for i=1,10 do
+    for i = 1, 10 do
         if groupType == 'map' then
-            if _G['TFCGroupFrame'..'REPorterFrame'..i] then _G['TFCGroupFrame'..'REPorterFrame'..i]:Hide() end
-            if _G['TFCGroupFrame'..'REPorterFrameCorePOI'..i] then _G['TFCGroupFrame'..'REPorterFrameCorePOI'..i]:Hide() end
+            if _G['TFCGroupFrame' .. 'REPorterFrame' .. i] then _G['TFCGroupFrame' .. 'REPorterFrame' .. i]:Hide() end
+            if _G['TFCGroupFrame' .. 'REPorterFrameCorePOI' .. i] then _G['TFCGroupFrame' .. 'REPorterFrameCorePOI' .. i]:Hide() end
         elseif groupType == 'frame' then
-            if displayFrame['displayGroup'..i] then displayFrame['displayGroup'..i]:Hide() end
+            if displayFrame['displayGroup' .. i] then displayFrame['displayGroup' .. i]:Hide() end
         end
     end
     if groupType == 'frame' and displayFrame['missingEnemyFrame'] then
@@ -593,10 +602,10 @@ function addon:getPOIs(refresh)
         end
         local POIs = C_AreaPoiInfo.GetAreaPOIForMap(Map)
         POIList = {}
-        for i,id in pairs(POIs) do
+        for i, id in pairs(POIs) do
             local info = C_AreaPoiInfo.GetAreaPOIInfo(Map, id)
             addon:Debug('(POI):', id, info.name, info.position:GetXY())
-            info = {['name']= info.name, ['id']= id, ['position']= info.position}
+            info = { ['name'] = info.name, ['id'] = id, ['position'] = info.position }
             POIList[info.name], POIList[id] = info, info
         end
     end
@@ -625,10 +634,10 @@ function addon:checkNearbyAlly()
     if not IsInInstance() then
         return
     end
-    
+
     --loop all raid members and check if they are in interact range
-    for i=1, GetNumGroupMembers() do
-        local unit = "raid"..i
+    for i = 1, GetNumGroupMembers() do
+        local unit = "raid" .. i
         local player = addon:getUnitDetails(unit)
         if player then
             if CheckInteractDistance(unit, 4) and not UnitIsDeadOrGhost(unit) then
@@ -653,16 +662,16 @@ function addon:getUnitDetails(unit)
     details["isPlayer"] = UnitIsPlayer(unit)
     details["class"] = select(2, UnitClass(unit))
     details["isClose"] = CheckInteractDistance(unit, 4)
-    details["isTarget"] = UnitIsUnit(unit,'target')
+    details["isTarget"] = UnitIsUnit(unit, 'target')
     details["isDead"] = UnitIsDeadOrGhost(unit)
     details["unit"] = unit
 
     --For some reason we get an occasional plate with an 'unknown' name. Filter those out.
     if details['name'] == 'Unknown' or details['name'] == 'Unbekannt' or not details['fullName'] then
         refreshFrames = true
-        return nil 
+        return nil
     end
-    
+
     return details
 end
 
@@ -675,7 +684,7 @@ function addon:getFullName(fullName, isUnitTag)
         end
         fullName = name .. '-' .. (realm or "")
     end
-    
+
     local parts = TFC.utils:splitString(fullName, '-')
     if parts[2] == nil or parts[2] == "" then
         local realm = GetRealmName()
@@ -694,7 +703,7 @@ end
 function addon:getBattlegroundPlayerData(force)
     local BFNumScores = GetNumBattlefieldScores()
     if (playerData and playerData.count == BFNumScores) and not force then return playerData end
-    playerData = {ally = {}, enemy = {}, count=0}
+    playerData = { ally = {}, enemy = {}, count = 0 }
     if not (select(2, IsInInstance()) == "pvp") then return playerData end
 
     local selfPlayerFaction = UnitFactionGroup('player')
@@ -703,11 +712,11 @@ function addon:getBattlegroundPlayerData(force)
         local player = {}
         player.fullName, _, _, _, _, player.factionId, player.race, _, player.class, _, _, _, _, _, player.specName = GetBattlefieldScore(i)
         if player.fullName then
-            player.fullName = addon:getFullName(player.fullName)
-            player.faction = player.factionId == 1 and 'Alliance' or 'Horde'
+            player.fullName             = addon:getFullName(player.fullName)
+            player.faction              = player.factionId == 1 and 'Alliance' or 'Horde'
             playerData[player.fullName] = player
-            player.isAlly = (player.faction == selfPlayerFaction)
-            player.allegiance  = player.isAlly and 'ally' or 'enemy'
+            player.isAlly               = (player.faction == selfPlayerFaction)
+            player.allegiance           = player.isAlly and 'ally' or 'enemy'
 
             playerData[player.allegiance][player.fullName] = player
             playerData.count = playerData.count + 1
@@ -722,8 +731,8 @@ end
 --------------------EVENTS-------------------
 
 function addon:CHAT_MSG_ADDON(prefix, msg, channel, sender)
-    sender = self:getFullName(sender)
     if prefix == "TFC" then
+        sender = self:getFullName(sender)
         -- addon:Debug(prefix, msg, channel, sender)
 
         local msgType, player = self:DecodeMsg(msg)
@@ -731,7 +740,7 @@ function addon:CHAT_MSG_ADDON(prefix, msg, channel, sender)
         if not counters[sender] then
             counters[sender] = Counter:new(sender)
         end
-        
+
         if msgType == "add" then
             counters[sender]:addPlayer(player)
         elseif msgType == "remove" then
@@ -739,7 +748,7 @@ function addon:CHAT_MSG_ADDON(prefix, msg, channel, sender)
         elseif msgType == "update" then
             counters[sender]:updatePlayer(player)
         end
-        
+
         self:refreshCallback()
     end
 end
@@ -757,7 +766,7 @@ function addon:ZONE_CHANGED_NEW_AREA()
     counters = {}
     counters[selfPlayer.fullName] = Counter:new(selfPlayer.fullName)
     refreshFrames = true
-    
+
     self:countNearbyFactions()
     self:refreshCallback()
 end
@@ -769,9 +778,9 @@ end
 
 function addon:NAME_PLATE_UNIT_ADDED(unit)
     -- self:Debug('Frame Added', unit, self:getFullName(unit))
-    if not UnitExists(unit) then return end 
+    if not UnitExists(unit) or UnitIsDeadOrGhost('player') then return end
     local frame = self:getUnitDetails(unit)
-    
+
     --Ignore in these cases
     if not frame or (frame['isTarget'] and not frame['isClose']) or frame['isDead'] or frame['reaction'] == nil then return end
 
@@ -785,26 +794,35 @@ end
 
 function addon:NAME_PLATE_UNIT_REMOVED(unit)
     -- self:Debug('Frame Removed', unit, self:getFullName(unit))
+    if UnitIsDead('player') then
+        refreshFrames = true
+        return
+    end
     local frame = self:getUnitDetails(unit)
     if not frame then return end
     --If the unit is dead, remove from list immediately
     if UnitIsDeadOrGhost(unit) then
         selfCounter:removeFrame(frame)
+        if deadEnemies[frame.fullName] == nil then
+            deadEnemies[frame.fullName] = GetTime()
+        end
         removedList[frame.fullName] = nil
         self:countNearbyFactions()
     else
         --if alive, set a callback to remove it in a few seconds.
         removedList[frame.fullName] = GetTime()
-        C_Timer.After(3, function () self:removedCallback() end)
+        C_Timer.After(3, function() self:removedCallback() end)
     end
 end
 
 function addon:PLAYER_ALIVE()
     self:updateSelfPlayer()
 end
+
 function addon:PLAYER_DEAD()
     self:updateSelfPlayer()
 end
+
 function addon:PLAYER_UNGHOST()
     self:updateSelfPlayer()
 end
@@ -821,7 +839,7 @@ function addon:ADDON_LOADED(addon)
     if addon == "TeamfightCounter" then
         TFC.db = LibStub("AceDB-3.0"):New("TeamfightCounterDB", TFC.DefaultSettings, true)
         TFC.settings = TFC.db.profile
-        
+
         local config = LibStub("AceConfig-3.0")
         local dialog = LibStub("AceConfigDialog-3.0")
 
@@ -835,16 +853,27 @@ function addon:ADDON_LOADED(addon)
         end
 
         self:countNearbyFactions()
-        
+
         self:Debug("Loaded")
     end
 end
 
+function addon:checkDead()
+    local now = GetTime()
+    for k, v in pairs(deadEnemies) do
+        if now - v > 25 then
+            deadEnemies[k] = nil
+        end
+    end
+end
+
 function addon:refreshCallback()
+    -- self:Debug('Refresh timer', GetTime(), GetTime() - TFC.timer)
     if GetTime() - TFC.timer < 0.5 then
         return
     end
     TFC.timer = GetTime()
+    self:checkDead()
     -- self:getPOIs()
     -- self:removedCallback()
     self:refreshFrames() --sometimes frames bug and return an 'Unknown' name. If this happens, do a full frame refresh to ensure we don't miss anything.
@@ -852,7 +881,7 @@ function addon:refreshCallback()
     self:checkNearbyAlly()
     self:updateGroups()
     -- self:Debug("Refreshed")
-    C_Timer.After(1, function () self:refreshCallback() end)
+    C_Timer.After(1, function() self:refreshCallback() end)
 end
 
 function addon:removedCallback()
@@ -928,7 +957,7 @@ end
 function addon:countNearbyFactions()
     if self:shouldFrameShow() then
         displayFrame:Show()
-    else 
+    else
         displayFrame:Hide()
         return
     end
@@ -936,8 +965,8 @@ function addon:countNearbyFactions()
 
     local friendly = 0
     local enemy = 0
-    for name,f in pairs(selfCounter.frames) do
-        if f.isPlayer then 
+    for name, f in pairs(selfCounter.frames) do
+        if f.isPlayer then
             if f.reaction > 4 then
                 friendly = friendly + 1
             end
@@ -947,10 +976,10 @@ function addon:countNearbyFactions()
         end
     end
     local nearby = 0
-    for name,f in pairs(selfCounter.nearby) do
+    for name, f in pairs(selfCounter.nearby) do
         nearby = nearby + 1
     end
-    displayFrame.displayEnemy:SetText('('..(friendly+1)..'v'..enemy..') ('..nearby..')')
+    displayFrame.displayEnemy:SetText('(' .. (friendly + 1) .. 'v' .. enemy .. ') (' .. nearby .. ')')
     displayFrame.displayEnemy:Show()
 end
 
@@ -958,15 +987,15 @@ end
 function addon:createTeamfightCounter()
     if displayFrame == nil then
         displayFrame = TeamfightCounterWindow
-        -- displayFrame.displayAllyDiff = displayFrame:CreateFontString(nil,"OVERLAY", "GameTooltipText") 
+        -- displayFrame.displayAllyDiff = displayFrame:CreateFontString(nil,"OVERLAY", "GameTooltipText")
         -- displayFrame.displayAllyDiff:SetText("(+1)")
         -- displayFrame.displayAllyDiff:SetPoint("TOPLEFT",15,0)
         -- displayFrame.displayAllyDiff:SetTextColor(0,1,0,1)
         -- displayFrame.displayAllyDiff:SetFont("Fonts\\FRIZQT__.TTF", 16, "THICKOUTLINE")
-        displayFrame.displayEnemy = displayFrame:CreateFontString(nil,"OVERLAY", "GameTooltipText") 
-        displayFrame.displayEnemy:SetPoint("TOP",0, 20)
+        displayFrame.displayEnemy = displayFrame:CreateFontString(nil, "OVERLAY", "GameTooltipText")
+        displayFrame.displayEnemy:SetPoint("TOP", 0, 20)
         displayFrame.displayEnemy:SetText("(1v0)")
-        displayFrame.displayEnemy:SetTextColor(0.5,0.5,0.5,1)
+        displayFrame.displayEnemy:SetTextColor(0.5, 0.5, 0.5, 1)
         displayFrame.displayEnemy:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
         displayFrame.displayEnemy:Hide()
     end
@@ -979,17 +1008,15 @@ function addon:Debug(...)
     end
 end
 
-
-
 --------------------INIT---------------------
-local function OnEvent(self,event,...)
+local function OnEvent(self, event, ...)
     if self[event] then
-        self[event](self,...)
+        self[event](self, ...)
     end
 end
 
 C_ChatInfo.RegisterAddonMessagePrefix("TFC")
-addon:SetScript('OnEvent',OnEvent)
+addon:SetScript('OnEvent', OnEvent)
 addon:RegisterEvent('PLAYER_ENTERING_WORLD')
 addon:RegisterEvent('NAME_PLATE_UNIT_ADDED')
 addon:RegisterEvent('NAME_PLATE_UNIT_REMOVED')
@@ -1007,14 +1034,16 @@ addon:createTeamfightCounter()
 displayFrame:SetScript("OnMouseDown", function(self, arg1)
     if not TFC.settings.showDebug then return end
     -- addon:getPOIs(true)
-    refreshFrames = true
+    -- refreshFrames = true
     -- addon:updateSelfPlayer()
     -- addon:checkNearbyAlly()
     -- addon:updateGroups()
     -- addon:showGroups()
     -- addon:showGroupsOnMap()
+    -- addon:getBattlegroundPlayerData()
 
-    addon:getBattlegroundPlayerData()
+    TFC.profiler:print()
+
     --print playerdata
     -- for name, data in pairs(playerdata) do
     --     print(name, data.class, data.
@@ -1025,7 +1054,7 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     --     c:updatePlayer({name = 'tester1', realm = 'test', fullName = 'tester1-test', isAlly = false, class='PRIEST'})
     --     c:addPlayer({name = 'tester2', realm = 'test', fullName = 'tester2-test', isAlly = true, class="MONK"})
     --     counters['tester1-test'] = c
-    
+
     --     counters['tester2-test'] = Counter:new('tester2-test')
     --     counters['tester2-test']:updatePlayer({name = 'tester2', realm = 'test', fullName = 'tester2-test', isAlly = true, class="MONK"})
 
@@ -1034,7 +1063,7 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     -- else
     --     counters['tester3-test']:addPlayer({name = 'tester2', realm = 'test', fullName = 'tester2-test', isAlly = true, class="MONK"})
     -- end
-    
+
     for i, c in pairs(groups) do
         addon:Debug ('Group ' .. i .. ": ".. c.allyCount.."v"..c.enemyCount .. ". Zone: " .. (c.zone or ""))
         for key,f in pairs(c.players) do
@@ -1042,16 +1071,16 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
         end
     end
 
-    for name,c in pairs(counters) do
-        addon:Debug ('Counter ' .. name.. "(".. c.name .."): ".. c.allyCount.."v"..c.enemyCount.. ". Zone: " .. (c.zone or ""))
-        for key,f in pairs(c.players) do
-            addon:Debug("Player: ", key.." ".. (f.class or ''), f.isAlly)
-        end
-    end
+    -- for name,c in pairs(counters) do
+    --     addon:Debug ('Counter ' .. name.. "(".. c.name .."): ".. c.allyCount.."v"..c.enemyCount.. ". Zone: " .. (c.zone or ""))
+    --     for key,f in pairs(c.players) do
+    --         addon:Debug("Player: ", key.." ".. (f.class or ''), f.isAlly)
+    --     end
+    -- end
 
-    for name,c in pairs(selfCounter.frames) do
-        addon:Debug ('Frames ', name, c.isAlly, c.class)
-    end
+    -- for name,c in pairs(selfCounter.frames) do
+    --     addon:Debug ('Frames ', name, c.isAlly, c.class)
+    -- end
 
 
     -- local POIs = addon:getPOIs()
@@ -1060,7 +1089,7 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     --     print(v, info.name, info.position:GetXY())
     -- end
     -- GetAreaPOIInfo
-    
+
 
 
 end)
