@@ -1,14 +1,10 @@
-## Interface: 92001
-
+## Interface: 90200
 ## Author: Cubelicious
 ## Title: TeamfightCounter
 ## Notes:
-## Version: 1.0
-## X-License: All Rights Reserved.
-## X-Website: 
-## X-Curse-Project-ID: 
-## X-WoWI-ID: 
-## OptionalDeps:
+## Version: v0.1
+## X-Category: PvP/Battlegrounds
+## OptionalDeps: REPorter
 ## SavedVariables: TeamfightCounterDB
 
 libs\LibStub\LibStub.lua

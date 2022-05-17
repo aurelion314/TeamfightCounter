@@ -137,24 +137,33 @@ function profiler:print()
     local durration, count = GetFunctionCPUUsage(TFC.addon.updateGroups, true)
     local average = durration/count
     TFC.addon:Debug('updateGroups', count, average, durration)
-    local durration, count = GetFunctionCPUUsage(TFC.addon.checkNearbyAlly, true)
+    local durration, count = GetFunctionCPUUsage(TFC.addon.showGroups, true)
     local average = durration/count
-    TFC.addon:Debug('checkNearbyAlly', count, average, durration)
+    TFC.addon:Debug('showGroups', count, average, durration)
+    local durration, count = GetFunctionCPUUsage(TFC.addon.showGroupsOnMap, true)
+    local average = durration/count
+    TFC.addon:Debug('showGroupsOnMap', count, average, durration)
+    local durration, count = GetFunctionCPUUsage(TFC.addon.showClassBlips, true)
+    local average = durration/count
+    TFC.addon:Debug('showClassBlips', count, average, durration)
     local durration, count = GetFunctionCPUUsage(TFC.addon.updateSelfPlayer, true)
     local average = durration/count
     TFC.addon:Debug('updateSelfPlayer', count, average, durration)
+    local durration, count = GetFunctionCPUUsage(TFC.addon.checkNearbyAlly, true)
+    local average = durration/count
+    TFC.addon:Debug('checkNearbyAlly', count, average, durration)
     local durration, count = GetFunctionCPUUsage(TFC.addon.countNearbyFactions, true)
     local average = durration/count
     TFC.addon:Debug('countNearbyFactions', count, average, durration)
     local durration, count = GetFunctionCPUUsage(TFC.addon.CHAT_MSG_ADDON, true)
     local average = durration/count
     TFC.addon:Debug('CHAT_MSG_ADDON', count, average, durration)
-    local durration, count = GetFunctionCPUUsage(utils.deepCopy, true)
-    local average = durration/count
-    TFC.addon:Debug('deepCopy', count, average, durration)
     local durration, count = GetFunctionCPUUsage(utils.splitString, true)
     local average = durration/count
     TFC.addon:Debug('splitString', count, average, durration)
+    local durration, count = GetFunctionCPUUsage(utils.deepCopy, true)
+    local average = durration/count
+    TFC.addon:Debug('deepCopy', count, average, durration)
     local durration, count = GetFunctionCPUUsage(TFC.addon.getFullName, true)
     local average = durration/count
     TFC.addon:Debug('getFullName', count, average, durration)

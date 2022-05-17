@@ -72,7 +72,14 @@ function selfCounter:removePlayer(player)
     if self.players[player.fullName] ~= nil then
         self.players[player.fullName] = nil
         if not player.class then addon:Debug("No class for", player.fullName) end
-        addon:SendMsg(player, 'remove')
+        if player.isDead then
+            if deadEnemies[player.fullName] == nil then
+                deadEnemies[player.fullName] = GetTime()
+            end
+            addon:SendMsg(player, "dead")
+        else
+            addon:SendMsg(player, 'remove')
+        end
     end
 end
 
@@ -247,7 +254,7 @@ function addon:updateGroups()
     self:getBattlegroundPlayerData()
     missingEnemies = {}
     for i, player in pairs(playerData.enemy) do
-        if deadEnemies['player.fullName'] == nil then
+        if deadEnemies[player.fullName] == nil then
             missingEnemies[player.fullName] = player
         end
     end
@@ -747,6 +754,11 @@ function addon:CHAT_MSG_ADDON(prefix, msg, channel, sender)
             counters[sender]:removePlayer(player)
         elseif msgType == "update" then
             counters[sender]:updatePlayer(player)
+        elseif msgType == "dead" then
+            counters[sender]:removePlayer(player)
+            if deadEnemies[player.fullName] == nil then
+                deadEnemies[player.fullName] = GetTime()
+            end
         end
 
         self:refreshCallback()
@@ -801,11 +813,8 @@ function addon:NAME_PLATE_UNIT_REMOVED(unit)
     local frame = self:getUnitDetails(unit)
     if not frame then return end
     --If the unit is dead, remove from list immediately
-    if UnitIsDeadOrGhost(unit) then
+    if frame['isDead'] then
         selfCounter:removeFrame(frame)
-        if deadEnemies[frame.fullName] == nil then
-            deadEnemies[frame.fullName] = GetTime()
-        end
         removedList[frame.fullName] = nil
         self:countNearbyFactions()
     else
@@ -861,7 +870,7 @@ end
 function addon:checkDead()
     local now = GetTime()
     for k, v in pairs(deadEnemies) do
-        if now - v > 25 then
+        if now - v > 27 then
             deadEnemies[k] = nil
         end
     end
@@ -876,7 +885,7 @@ function addon:refreshCallback()
     self:checkDead()
     -- self:getPOIs()
     -- self:removedCallback()
-    self:refreshFrames() --sometimes frames bug and return an 'Unknown' name. If this happens, do a full frame refresh to ensure we don't miss anything.
+    self:refreshFrames(true) --sometimes frames bug and return an 'Unknown' name. If this happens, do a full frame refresh to ensure we don't miss anything.
     self:updateSelfPlayer(true)
     self:checkNearbyAlly()
     self:updateGroups()
@@ -902,8 +911,8 @@ function addon:removedCallback()
     self:countNearbyFactions()
 end
 
-function addon:refreshFrames()
-    if not refreshFrames then return end
+function addon:refreshFrames(force)
+    if not refreshFrames and not force then return end
     refreshFrames = false
     -- self:Debug('Refreshing Frames')
     local nameplates = C_NamePlate.GetNamePlates()
@@ -930,8 +939,10 @@ function addon:refreshFrames()
     end
     --add new frames
     for name, unit in pairs(remainingNameplates) do
-        self:Debug('Frame refresh adding frame', name, unit)
-        self:NAME_PLATE_UNIT_ADDED(unit)
+        if UnitIsPlayer(unit) then
+            self:Debug('Frame refresh adding frame', name, unit)
+            self:NAME_PLATE_UNIT_ADDED(unit)
+        end
     end
 end
 
