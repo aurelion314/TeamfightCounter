@@ -488,6 +488,10 @@ function addon:showClassBlips(group, parentFrame, reaction)
         blip:Hide()
     end
 
+    if not TFC.settings.showClasses and reaction ~= 'missing' then
+        return
+    end
+
     local ally, enemy = {}, {}
     if reaction ~= "missing" then
         for i, player in pairs(group.players) do
@@ -541,18 +545,19 @@ function addon:showClassBlips(group, parentFrame, reaction)
 end
 
 function addon:showClassBlip(parentFrame, player, x, y, faction, playerNum, texture)
-    if parentFrame["TFCBlipTexture" .. faction .. playerNum] == nil then
-        parentFrame["TFCBlipTexture" .. faction .. playerNum] = parentFrame:CreateTexture("TFCBlipTexture" .. parentFrame:GetName() .. faction .. playerNum)
+    local textureName = "TFCBlipTexture" .. faction .. playerNum
+    if parentFrame[textureName] == nil then
+        parentFrame[textureName] = parentFrame:CreateTexture("TFCBlipTexture" .. parentFrame:GetName() .. faction .. playerNum)
         if not texture then
-            parentFrame["TFCBlipTexture" .. faction .. playerNum]:SetTexture("Interface\\Addons\\TeamfightCounter\\textures\\BlipNormal")
+            parentFrame[textureName]:SetTexture("Interface\\Addons\\TeamfightCounter\\textures\\BlipNormal")
         else
-            parentFrame["TFCBlipTexture" .. faction .. playerNum]:SetTexture(texture)
+            parentFrame[textureName]:SetTexture(texture)
         end
+        parentFrame[textureName]:SetWidth(10)
+        parentFrame[textureName]:SetHeight(10)
     end
-    local texture = parentFrame["TFCBlipTexture" .. faction .. playerNum]
+    local texture = parentFrame[textureName]
     texture:SetPoint("CENTER", parentFrame, x, y)
-    texture:SetWidth(10)
-    texture:SetHeight(10)
     local r, g, b = GetClassColor(player.class)
     texture:SetVertexColor(r, g, b, 0.7)
     texture:Show()
@@ -1054,10 +1059,6 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     -- addon:getBattlegroundPlayerData()
 
     TFC.profiler:print()
-
-    --print playerdata
-    -- for name, data in pairs(playerdata) do
-    --     print(name, data.class, data.
 
 
     -- if counters['tester1-test'] == nil then

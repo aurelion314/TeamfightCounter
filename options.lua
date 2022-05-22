@@ -42,13 +42,28 @@ TFC.MainOptionTable = {
 				},
 			}
 		},
-		showMissing = {
-			name = "Show Missing Enemies",
-			desc = "Show unaccounted for enemies at the top of the map or above the counter.",
-			type = "toggle",
-			width = "full",
-			order = 4,
+		classBlips = {
+			type = "group",
+			name = "Class Blips",
+			order = 2,
+			inline = true,
+			args = {
+				showClasses = {
+					name = "Show Class Blips",
+					type = "toggle",
+					width = "full",
+					order = 1,
+				},
+				showMissing = {
+					name = "Show Missing Enemies",
+					desc = "Show unaccounted for enemies at the top of the map or above the counter.",
+					type = "toggle",
+					width = "full",
+					order = 4,
+				},
+			}
 		},
+		
 		showDebug = {
 			name = "Debug Mode",
 			type = "toggle",
@@ -100,6 +115,7 @@ TFC.DefaultSettings = {
 		showOutsideInstance = false,
 		frameOnBaselessMaps = false,
 		showMissing = true,
+		showClasses = true,
 		showDebug = false,
 	}
 }
