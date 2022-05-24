@@ -404,7 +404,7 @@ function addon:showGroupsOnMap()
     self:cleanGroupFrames('map')
 
     --have they selected to only use on node maps?
-    if TFC.settings.showDebug and TFC.settings.frameOnBaselessMaps then
+    if TFC.settings.showFrame and TFC.settings.frameOnBaselessMaps then
         --is this map nodeless?
         self:getPOIs()
         if not POIList or next(POIList) == nil then return end
@@ -546,22 +546,22 @@ end
 
 function addon:showClassBlip(parentFrame, player, x, y, faction, playerNum, texture)
     local textureName = "TFCBlipTexture" .. faction .. playerNum
-    if parentFrame[textureName] == nil then
-        parentFrame[textureName] = parentFrame:CreateTexture("TFCBlipTexture" .. parentFrame:GetName() .. faction .. playerNum)
+    if parentFrame.blips[textureName] == nil then
+        parentFrame.blips[textureName] = parentFrame:CreateTexture("TFCBlipTexture" .. parentFrame:GetName() .. faction .. playerNum)
         if not texture then
-            parentFrame[textureName]:SetTexture("Interface\\Addons\\TeamfightCounter\\textures\\BlipNormal")
+            parentFrame.blips[textureName]:SetTexture("Interface\\Addons\\TeamfightCounter\\textures\\BlipNormal")
         else
-            parentFrame[textureName]:SetTexture(texture)
+            parentFrame.blips[textureName]:SetTexture(texture)
         end
-        parentFrame[textureName]:SetWidth(10)
-        parentFrame[textureName]:SetHeight(10)
+        parentFrame.blips[textureName]:SetWidth(10)
+        parentFrame.blips[textureName]:SetHeight(10)
     end
-    local texture = parentFrame[textureName]
+    local texture = parentFrame.blips[textureName]
     texture:SetPoint("CENTER", parentFrame, x, y)
     local r, g, b = GetClassColor(player.class)
     texture:SetVertexColor(r, g, b, 0.7)
     texture:Show()
-    table.insert(parentFrame.blips, texture)
+    parentFrame.blips[textureName] = texture
 end
 
 function addon:getGroupPosition(group)
