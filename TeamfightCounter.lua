@@ -26,7 +26,7 @@ local groupMaster = {}
 --A group tracks everything about that group. The players, counter, frames, etc.
 local group = {}
 
------------------------ SelfCounter tracks who each ally sees
+----------------------- SelfCounter tracks who you see
 local selfCounter = {}
 function selfCounter:addFrame(frame)
     if self.frames[frame.fullName] == nil then
@@ -218,9 +218,14 @@ function addon:updateSelfPlayer(force)
     player['class'] = select(2, UnitClass('player'))
     player['isDead'] = UnitIsDeadOrGhost('player')
 
-    player['zone'] = self:getZoneId()
+    --Fix for when player dies and returns to graveyard but their zone remains where their body is.
+    if player['isDead'] then
+        player['zone'] = nil
+    else
+        player['zone'] = self:getZoneId()
+    end
 
-    --loop player keys
+    --check if any data about player has changed
     if force or not selfPlayer then
         doUpdate = true
     else
@@ -240,6 +245,7 @@ function addon:updateSelfPlayer(force)
     end
 end
 
+-- Update groups based on all player counters. Groups become the teamfight counts.
 function addon:updateGroups()
     -- addon:Debug(': Update Groups')
     local next = next
@@ -251,6 +257,7 @@ function addon:updateGroups()
         end
     end
 
+    --Ensure we have up to date player data for full BG. Needed for enemy class tracking
     self:getBattlegroundPlayerData()
     missingEnemies = {}
     for i, player in pairs(playerData.enemy) do
@@ -265,7 +272,7 @@ function addon:updateGroups()
         return
     end
 
-    --First off, clear groups and make a fresh one.
+    --First off, clear groups and populate with the first counter
     groups = { TFC.utils:deepCopy(table.remove(remainingCounters, 1)) }
     --Keep checking counters until we remove all of them
     while next(remainingCounters) ~= nil do
@@ -300,6 +307,7 @@ function addon:updateGroups()
         end
     end
 
+    --Build player list and update missing enemies.
     playerList = {}
     for i, group in pairs(groups) do
         group['id'] = i
@@ -313,6 +321,7 @@ function addon:updateGroups()
         end
     end
 
+    --Now that we have the group teamfight counts, render them to screen
     self:showGroups()
     self:showGroupsOnMap()
 end
@@ -580,6 +589,7 @@ function addon:getGroupPosition(group)
     return nil, nil
 end
 
+--Copied from REPorter. Converts co-ordinates to values used by the map
 function addon:getRealCoords(rawX, rawY)
     return rawX * 783, -rawY * 522
 end
@@ -601,6 +611,7 @@ function addon:cleanGroupFrames(groupType)
     end
 end
 
+--Gets points of interest for the map. These are the bases.
 function addon:getPOIs(refresh)
     if not (select(2, IsInInstance()) == "pvp") then POIList = {} return {} end
     if refresh or (POIList == nil) then
@@ -624,6 +635,7 @@ function addon:getPOIs(refresh)
     return POIList
 end
 
+--Checks if 2 allies are in the same teamfight.
 function addon:hasOverlap(counter1, counter2)
     --if counter zone is the same, always group.
     if counter1.zone and counter2.zone and counter1.zone == counter2.zone then
@@ -640,6 +652,7 @@ function addon:hasOverlap(counter1, counter2)
     end
 end
 
+--Checks for allies nearby using raid units.
 function addon:checkNearbyAlly()
     -- self:Debug('Checking nearby allies')
     --check if in instance
@@ -872,6 +885,7 @@ function addon:ADDON_LOADED(addon)
     end
 end
 
+--------------------CALLBACKS-------------------
 function addon:checkDead()
     local now = GetTime()
     for k, v in pairs(deadEnemies) do
