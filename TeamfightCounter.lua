@@ -167,6 +167,10 @@ end
 --Send an addon message to group
 function addon:SendMsg(frame, msgType)
     local zone = self:getZoneId()
+    --Fix for when player dies and returns to graveyard but their zone remains where their body is.
+    if selfPlayer['isDead'] then
+        zone = nil
+    end
 
     -- self:Debug("MSG", frame.name, frame.realm, frame.class)
 
@@ -217,13 +221,6 @@ function addon:updateSelfPlayer(force)
     local player = { fullName = self:getFullName(GetUnitName('player') .. '-' .. (GetRealmName() or "")), name = GetUnitName('player'), realm = GetRealmName(), isAlly = true }
     player['class'] = select(2, UnitClass('player'))
     player['isDead'] = UnitIsDeadOrGhost('player')
-
-    --Fix for when player dies and returns to graveyard but their zone remains where their body is.
-    if player['isDead'] then
-        player['zone'] = nil
-    else
-        player['zone'] = self:getZoneId()
-    end
 
     --check if any data about player has changed
     if force or not selfPlayer then
@@ -691,6 +688,18 @@ function addon:getUnitDetails(unit)
     details["isDead"] = UnitIsDeadOrGhost(unit)
     details["unit"] = unit
 
+    --Reaction can be weird when the player is dead. Thus we must use BG data not the reaction API. The reason we don't always do this is because the floating frame can be used outside BGs where we don't have such data.
+    if selfPlayer['isDead'] then
+        --check if in pvp
+        if not (select(2, IsInInstance()) == "pvp") then
+            return nil
+        end
+        if playerData[details['fullName']] then
+            details['isAlly'] = playerData[details['fullName']]['isAlly']
+        end
+        -- addon:Debug('Self is dead, unit data:', details['fullName'], playerData[details['fullName']]['faction'], 'isAlly:', details['isAlly'])
+    end
+
     --For some reason we get an occasional plate with an 'unknown' name. Filter those out.
     if details['name'] == 'Unknown' or details['name'] == 'Unbekannt' or not details['fullName'] then
         refreshFrames = true
@@ -719,7 +728,7 @@ function addon:getFullName(fullName, isUnitTag)
 end
 
 function addon:refreshMap(force)
-    if Map == nil or force then
+    if Map == nil or force and not select(1, IsActiveBattlefieldArena()) then
         addon:Debug("Setting Map")
         Map = C_Map.GetBestMapForUnit("player")
     end
@@ -732,17 +741,17 @@ function addon:getBattlegroundPlayerData(force)
     if not (select(2, IsInInstance()) == "pvp") then return playerData end
 
     local selfPlayerFaction = UnitFactionGroup('player')
-    addon:Debug('Numscores', BFNumScores)
+    addon:Debug('Battlefield player scores:', BFNumScores)
     for i = 1, BFNumScores do
         local player = {}
         player.fullName, _, _, _, _, player.factionId, player.race, _, player.class, _, _, _, _, _, player.specName = GetBattlefieldScore(i)
         if player.fullName then
             player.fullName             = addon:getFullName(player.fullName)
             player.faction              = player.factionId == 1 and 'Alliance' or 'Horde'
-            playerData[player.fullName] = player
             player.isAlly               = (player.faction == selfPlayerFaction)
             player.allegiance           = player.isAlly and 'ally' or 'enemy'
-
+            
+            playerData[player.fullName] = player
             playerData[player.allegiance][player.fullName] = player
             playerData.count = playerData.count + 1
         else
@@ -808,7 +817,7 @@ end
 
 function addon:NAME_PLATE_UNIT_ADDED(unit)
     -- self:Debug('Frame Added', unit, self:getFullName(unit))
-    if not UnitExists(unit) or UnitIsDeadOrGhost('player') then return end
+    if not UnitExists(unit) or UnitIsUnit(unit, 'player') then return end
     local frame = self:getUnitDetails(unit)
 
     --Ignore in these cases
@@ -824,14 +833,10 @@ end
 
 function addon:NAME_PLATE_UNIT_REMOVED(unit)
     -- self:Debug('Frame Removed', unit, self:getFullName(unit))
-    if UnitIsDead('player') then
-        refreshFrames = true
-        return
-    end
     local frame = self:getUnitDetails(unit)
     if not frame then return end
     --If the unit is dead, remove from list immediately
-    if frame['isDead'] then
+    if frame['isDead'] or UnitIsDeadOrGhost('player') then
         selfCounter:removeFrame(frame)
         removedList[frame.fullName] = nil
         self:countNearbyFactions()
@@ -905,17 +910,17 @@ function addon:refreshCallback()
     -- self:getPOIs()
     -- self:removedCallback()
     self:refreshFrames(true) --sometimes frames bug and return an 'Unknown' name. If this happens, do a full frame refresh to ensure we don't miss anything.
-    self:updateSelfPlayer(true)
+    self:updateSelfPlayer()
     self:checkNearbyAlly()
     self:updateGroups()
     -- self:Debug("Refreshed")
     C_Timer.After(1, function() self:refreshCallback() end)
 end
 
-function addon:removedCallback()
+function addon:removedCallback(clear)
     local now = GetTime()
     for name, removedTime in pairs(removedList) do
-        if now - removedTime >= 3 then
+        if now - removedTime >= 3 or clear then
             -- addon:Debug('Removing', name)
             local player = selfCounter.frames[name]
             if player then
@@ -958,7 +963,7 @@ function addon:refreshFrames(force)
     end
     --add new frames
     for name, unit in pairs(remainingNameplates) do
-        if UnitIsPlayer(unit) then
+        if UnitIsPlayer(unit) and not UnitIsUnit(unit, 'player') then
             self:Debug('Frame refresh adding frame', name, unit)
             self:NAME_PLATE_UNIT_ADDED(unit)
         end
@@ -1072,7 +1077,7 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     -- addon:showGroupsOnMap()
     -- addon:getBattlegroundPlayerData()
 
-    TFC.profiler:print()
+    -- TFC.profiler:print()
 
 
     -- if counters['tester1-test'] == nil then
