@@ -16,6 +16,9 @@ libs\AceConfig-3.0\AceConfig-3.0.xml
 libs\LibSharedMedia-3.0\lib.xml
 libs\AceGUI-3.0-SharedMediaWidgets\widget.xml
 
+localization.lua
+Locales\deDE.lua
+
 TeamfightCounter.xml
 utils.lua
 options.lua

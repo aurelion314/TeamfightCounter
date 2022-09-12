@@ -63,12 +63,40 @@ TFC.MainOptionTable = {
 				},
 			}
 		},
-		
+
+		textScale = {
+			name = "Text Scale",
+			type = "range",
+			width = "single",
+			desc = "Requires Reload",
+			order = 5,
+			min = 0.5,
+			max = 1.5,
+			step = 0.05,
+		},
+		blipScale = {
+			name = "Blip Scale",
+			type = "range",
+			width = "single",
+			desc = "Requires Reload to fully take effect",
+			order = 6,
+			min = 0.5,
+			max = 1.5,
+			step = 0.05,
+		},
+		newClassOrder = {
+			name = "New Class Order",
+			type = "toggle",
+			desc = "Requires Reload. \n\nNew: Healing classes -> melee -> ranged -> stealth. \n\nOld: Melee -> ranged -> healing -> stealth. \n\nThe new one is closer to BGE order, but not the same.",
+			width = "full",
+			order = 7,
+		},
 		showDebug = {
 			name = "Debug Mode",
 			type = "toggle",
+			desc = "This will spam your chat with debug messages. Only enable if you're trying to help me debug something.",
 			width = "full",
-			order = 5,
+			order = 8,
 		},
 	}
 }
@@ -111,31 +139,46 @@ TFC.MainOptionTable = {
 
 TFC.DefaultSettings = {
 	profile= {
-		showFrame = false,
-		showOutsideInstance = false,
+		showFrame = true,
+		showOutsideInstance = true,
 		frameOnBaselessMaps = false,
 		showMissing = true,
 		showClasses = true,
+		textScale = 1,
+		blipScale = 1,
+		newClassOrder = false,
 		showDebug = false,
 	}
 }
 
---used for class blips
-local classOrder = {
-    "DEMONHUNTER",
-    "DEATHKNIGHT",
-    "WARRIOR",
-    "MONK",
-    "HUNTER",
-    "MAGE",
-    "WARLOCK",
+--used for class blips. Generally has melee first, ranged, healing classes, then stealth. Mostly just trying to have nice looking shading.
+TFC.classOrderOld = {
+	"DEMONHUNTER",
+	"DEATHKNIGHT",
+	"WARRIOR",
+	"MONK",
+	"HUNTER",
+	"MAGE",
+	"WARLOCK",
+	"PRIEST",
+	"PALADIN",
+	"SHAMAN",
+	"DRUID",
+	"ROGUE",
+}
+--This is a possible order that is closer to BGE. Still different but it places healing classes first, then melee, then ranged, then stealth.
+TFC.classOrderNew = {
     "PRIEST",
     "PALADIN",
+    "MONK",
     "SHAMAN",
+    "DEMONHUNTER",
+    "WARRIOR",
+    "DEATHKNIGHT",
+    "MAGE",
+    "WARLOCK",
+    "HUNTER",
     "DRUID",
     "ROGUE",
 }
-TFC.classOrder = {}
-for i, class in pairs(classOrder) do
-	TFC.classOrder[class] = i
-end
+

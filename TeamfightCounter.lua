@@ -1,10 +1,12 @@
 local AddonName, TFC = ...
+L = TFC.L
 _G['TeamfightCounter'] = CreateFrame('Frame')
 local addon = _G['TeamfightCounter']
 local TeamfightCounterWindow = _G['TeamfightCounterWindow']
 TFC.version = 0.1
 TFC.addon = addon
 TFC.timer = 0
+TFC.timeSinceLastUpdate = 0
 
 local removedList = {}
 local playerData = nil
@@ -18,10 +20,8 @@ local selfPlayer = nil
 local deadEnemies = {}
 local missingEnemies = {}
 local refreshFrames = false
-
-
---class to handle groups
-local groupMaster = {}
+local Map = nil
+local flagCarriers = {}
 
 --A group tracks everything about that group. The players, counter, frames, etc.
 local group = {}
@@ -245,6 +245,9 @@ end
 -- Update groups based on all player counters. Groups become the teamfight counts.
 function addon:updateGroups()
     -- addon:Debug(': Update Groups')
+    if UnitIsDeadOrGhost('player') then 
+        addon:Debug('Update Group while player dead')
+    end
     local next = next
     --Make a list of remaining counters that we can modify on the fly
     local remainingCounters = {}
@@ -265,6 +268,8 @@ function addon:updateGroups()
 
     if next(remainingCounters) == nil then
         -- addon:Debug('No counters')
+        self:cleanGroupFrames('frame', true)
+        self:cleanGroupFrames('map', true)
         groups = {}
         return
     end
@@ -306,10 +311,22 @@ function addon:updateGroups()
 
     --Build player list and update missing enemies.
     playerList = {}
+    flagCarriers.groups = {}
     for i, group in pairs(groups) do
         group['id'] = i
+        group['flagCarriers'] = {}
         -- loop players in group and check zone
         for j, player in pairs(group.players) do
+            if flagCarriers[player.fullName] ~= nil then
+                --track flag carriers
+                if group.zone == nil then
+                    group.zone = 'Flag' --flagCarriers[player.fullName]
+                end
+                group.flagCarriers[player.fullName] = flagCarriers[player.fullName]
+                --track flag carriers in flagCarriers.groups
+                flagCarriers['groups'][i] = group
+            end
+                
             playerList[player.fullName] = true
             --remove from remaining enemy
             if missingEnemies[player.fullName] then
@@ -386,7 +403,7 @@ function addon:showGroups()
             groupText:SetPoint("CENTER", 0, 0)
             groupText:SetTextColor(0.5, 0.5, 0.5, 1)
             groupText:SetText('1v0')
-            groupText:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+            groupText:SetFont("Fonts\\FRIZQT__.TTF", 14*TFC.settings.textScale, "OUTLINE")
         end
         local groupCounterFrame = displayFrame['displayGroup' .. i]
         local groupText = groupCounterFrame['groupText']
@@ -449,6 +466,7 @@ function addon:showGroupOnMap(group, x, y, parentFrameName)
     local fontSize = group.zone and 16 or 12
     local alpha = group.zone and 1 or 0.75
     local frameName = "TFCGroupFrame" .. parentFrameName .. group['id']
+    group.frameName, group.parentFrameName = frameName, parentFrameName
     if _G[frameName] == nil then
         local frameMain = CreateFrame("Frame", frameName, _G[parentFrameName])
         frameMain:SetFrameLevel(16) --was 10
@@ -458,8 +476,11 @@ function addon:showGroupOnMap(group, x, y, parentFrameName)
     end
     local frameMain = _G[frameName]
     if parentFrameName == 'REPorterFrame' then
+        --Show at top of map
         frameMain:SetPoint("CENTER", parentFrameName, "TOP", x, y)
     else
+        --Show at base or flag position.
+        -- addon:Debug('ShowGroupOnMap: ', x, y, frameName, parentFrameName)
         frameMain:SetPoint("CENTER", parentFrameName, "TOPLEFT", x, y)
     end
     frameMain:Show()
@@ -467,7 +488,7 @@ function addon:showGroupOnMap(group, x, y, parentFrameName)
     local textName = "TFCGroupText" .. group['id']
     if frameMain[textName] == nil then
         local frameText = frameMain:CreateFontString("Frame", textName, frameMain)
-        frameText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+        frameText:SetFont("Fonts\\FRIZQT__.TTF", fontSize*TFC.settings.textScale, "OUTLINE")
         frameText:SetPoint("CENTER", 0, 0)
         frameMain[textName] = frameText
     end
@@ -510,7 +531,7 @@ function addon:showClassBlips(group, parentFrame, reaction)
     end
 
     local x, y
-    local blipWidth = 6
+    local blipWidth = 6*TFC.settings.blipScale
     if not reaction or reaction == 'ally' then
         local playerNum = 1
         for i, player in TFC.utils:spairs(ally, function(t, a, b) return (TFC.classOrder[t[b].class] or 0) < (TFC.classOrder[t[a].class] or 0) end) do
@@ -559,8 +580,8 @@ function addon:showClassBlip(parentFrame, player, x, y, faction, playerNum, text
         else
             parentFrame.blips[textureName]:SetTexture(texture)
         end
-        parentFrame.blips[textureName]:SetWidth(10)
-        parentFrame.blips[textureName]:SetHeight(10)
+        parentFrame.blips[textureName]:SetWidth(10*TFC.settings.blipScale)
+        parentFrame.blips[textureName]:SetHeight(10*TFC.settings.blipScale)
     end
     local texture = parentFrame.blips[textureName]
     texture:SetPoint("CENTER", parentFrame, x, y)
@@ -573,17 +594,106 @@ end
 function addon:getGroupPosition(group)
     --check zone of group. Loop players and select first zone
     addon:refreshMap()
+    local verticalOffset = 0.04
     local zone = group.zone
+    local flagTextures = {['Horde Flag']= 137218, ['Alliance Flag']= 137200, ['Orange Orb']=137200, ['Flag']=137200}
+    
     if zone then
+        --Flags
+        if flagTextures[zone] ~= nil then
+            --loop Flag carriers
+            local desiredFlagTexture = nil
+            for flagCarrier, flagType in pairs(group.flagCarriers) do
+                --debug
+                addon:Debug("Flag carrier: " .. flagCarrier .. " flagType: " .. flagType)
+                if flagTextures[flagType] ~= nil then
+                    desiredFlagTexture = flagTextures[flagType]
+                end
+            end    
+            
+            for i = 1, 4 do
+                local x, y, flagTexture = C_PvP.GetBattlefieldFlagPosition(i, Map)
+                -- addon:Debug("Flag", x, y, flagTexture)
+                if desiredFlagTexture == flagTexture then
+                    if x == nil or y == nil then
+                        addon:Debug("Flag possition is nil: ", zone, x, y, flagTexture)
+                        break
+                    end
+                    addon:Debug("Flag possition (GroupUpdate): ", x, y, flagTexture)
+                    return self:getRealCoords(x, y - verticalOffset)
+                end
+            end
+        end
+        --Bases
         self:getPOIs()
         local POIinfo = POIList[zone]
         if POIinfo then
             local x, y = POIinfo.position:GetXY()
-            return self:getRealCoords(x, y - 0.04)
+            return self:getRealCoords(x, y - verticalOffset)
         end
     end
 
     return nil, nil
+end
+
+function addon:updateFlagPosition()
+    local map = addon:refreshMap()
+    if map ~= 1339 and map ~= 206 then
+        return
+    end
+    if flagCarriers.groups == nil then
+        return
+    end
+    
+    --First check flag positions
+    local hordeFlagTexture, allianceFlagTexture = 137218, 137200
+    local hordeFlags, allianceFlags = {}, {}
+    for i = 1, 4 do
+        local x, y, flagTexture = C_PvP.GetBattlefieldFlagPosition(i, map)
+        
+        if flagTexture == hordeFlagTexture and x ~= nil and y~=nil then
+            table.insert(hordeFlags, {['x']=x, ['y']=y})
+        elseif flagTexture == allianceFlagTexture and x ~= nil and y~=nil then
+            table.insert(allianceFlags, {['x']=x, ['y']=y})
+        end
+    end
+
+    --I need to know which groups have flags, how many flags, and who has them (faction).
+    for group_id, group in pairs(flagCarriers.groups) do
+        local frameName = group.frameName
+        local frameMain = _G[frameName]
+        local parentFrameName = group.parentFrameName
+        
+        --If its showing at top, don't update.
+        if parentFrameName ~= 'REPorterFrame' then
+            local x, y = 0, 0
+            local flagCount = 0
+            for playerName, flagType in pairs(group.flagCarriers) do
+                --get the position of flags
+                if flagType == 'Horde Flag' and #hordeFlags > 0 then
+                    x = x + hordeFlags[1].x
+                    y = y + hordeFlags[1].y
+                    flagCount = flagCount + 1
+                elseif flagType == 'Alliance Flag' and #allianceFlags > 0 then
+                    x = x + allianceFlags[1].x
+                    y = y + allianceFlags[1].y
+                    flagCount = flagCount + 1
+                end
+            end
+            if flagCount ~= 0 then
+                x = x / flagCount
+                y = y / flagCount
+                
+                --now update group positions.
+                -- addon:Debug("Updating flag position for group " .. group_id .. ':', x, y, flagCount, parentFrameName, frameName)
+                x, y = self:getRealCoords(x, y - 0.04)
+                frameMain:SetPoint("CENTER", parentFrameName, "TOPLEFT", x, y)
+            else
+                -- addon:Debug("No flag positions for group: " .. group_id, #flagCarriers.groups)
+            end
+        end
+    end
+
 end
 
 --Copied from REPorter. Converts co-ordinates to values used by the map
@@ -591,7 +701,7 @@ function addon:getRealCoords(rawX, rawY)
     return rawX * 783, -rawY * 522
 end
 
-function addon:cleanGroupFrames(groupType)
+function addon:cleanGroupFrames(groupType, excludeEnemyBlips)
     for i = 1, 10 do
         if groupType == 'map' then
             if _G['TFCGroupFrame' .. 'REPorterFrame' .. i] then _G['TFCGroupFrame' .. 'REPorterFrame' .. i]:Hide() end
@@ -600,11 +710,16 @@ function addon:cleanGroupFrames(groupType)
             if displayFrame['displayGroup' .. i] then displayFrame['displayGroup' .. i]:Hide() end
         end
     end
-    if groupType == 'frame' and displayFrame['missingEnemyFrame'] then
-        displayFrame['missingEnemyFrame']:Hide()
-    end
-    if groupType == 'map' and _G['missingEnemyMapFrame'] then
-        _G['missingEnemyMapFrame']:Hide()
+    --Hide enemy blips below, but only if we need to.
+    if excludeEnemyBlips then 
+        return 
+    else 
+        if groupType == 'frame' and displayFrame['missingEnemyFrame'] then
+            displayFrame['missingEnemyFrame']:Hide()
+        end
+        if groupType == 'map' and _G['missingEnemyMapFrame'] then
+            _G['missingEnemyMapFrame']:Hide()
+        end
     end
 end
 
@@ -732,6 +847,7 @@ function addon:refreshMap(force)
         addon:Debug("Setting Map")
         Map = C_Map.GetBestMapForUnit("player")
     end
+    return Map
 end
 
 function addon:getBattlegroundPlayerData(force)
@@ -802,6 +918,7 @@ function addon:ZONE_CHANGED_NEW_AREA()
     self:getBattlegroundPlayerData(true)
     selfCounter:reset()
     removedList = {}
+    flagCarriers = {}
     counters = {}
     counters[selfPlayer.fullName] = Counter:new(selfPlayer.fullName)
     refreshFrames = true
@@ -812,7 +929,7 @@ end
 
 function addon:ZONE_CHANGED()
     addon:Debug('Zone Changed:', GetSubZoneText())
-    self:updateSelfPlayer()
+    self:updateSelfPlayer(true)
 end
 
 function addon:NAME_PLATE_UNIT_ADDED(unit)
@@ -886,9 +1003,96 @@ function addon:ADDON_LOADED(addon)
 
         self:countNearbyFactions()
 
+        TFC.classOrder = {}
+        if TFC.settings.newClassOrder then
+            for i, class in pairs(TFC.classOrderNew) do
+                TFC.classOrder[class] = i
+            end
+        else
+            for i, class in pairs(TFC.classOrderOld) do
+                TFC.classOrder[class] = i
+            end
+        end
+
         self:Debug("Loaded")
     end
 end
+
+function addon:CHAT_MSG_BG_SYSTEM_ALLIANCE(text, ...)
+    local name = text:match("([^%s]+)")
+    local playerName = self:getFullName(name)
+    self:Debug('TFC Alliance Message', text, name, playerName)
+
+    --flag dropped
+    if string.find(text, L['dropped']) or string.find(text, L["captured"]) or string.find(text, L["captured2"]) then
+        --check empty 
+        if flagCarriers[playerName] ~= nil then
+            flagCarriers[flagCarriers[playerName]] = nil
+        end
+        flagCarriers[playerName] = nil
+        self:Debug('Flag Dropped.', playerName)
+    end
+    --flag pickup
+    if string.find(text, L['picked']) then
+        local flagType = addon:getFlagFromText(text)
+        flagCarriers[playerName] = flagType
+        flagCarriers[flagType] = playerName
+        self:Debug('Flag Taken.', playerName, flagType)
+    end
+
+
+end
+
+function addon:CHAT_MSG_BG_SYSTEM_HORDE(text, ...)
+    addon:CHAT_MSG_BG_SYSTEM_ALLIANCE(text, ...)
+    return
+end
+
+-- ON_UPDATE
+function addon:ON_UPDATE(elapsed)
+    TFC.timeSinceLastUpdate = TFC.timeSinceLastUpdate + elapsed; 	
+
+    if (TFC.timeSinceLastUpdate > 0.1) then
+        addon:updateFlagPosition()
+
+        TFC.timeSinceLastUpdate = 0;
+    end
+end
+--     self:Debug('TFC Horde Message', text, playerName, languageName)
+
+--     if string.find(text, L['dropped']) or string.find(text, L["captured"]) then
+--         self:Debug('Flag Dropped.', playerName)
+--         local name = addon:getFullName(playerName)
+--         flagCarriers[name] = nil
+--     end
+--     --also check for flag pickup
+--     if string.find(text, L['picked']) then
+--         local name = addon:getFullName(playerName)
+--         local flagType = addon:getFlagFromText(text)
+--         flagCarriers[name] = flagType
+--         self:Debug('Flag Taken.', playerName, flagType)
+--     end
+-- end
+
+function addon:getFlagFromText(text)
+    if string.find(text, L['blue Orb']) then
+        return 'blue Orb'
+    elseif string.find(text, L['green Orb']) then
+        return 'green Orb'
+    elseif string.find(text, L['purple Orb']) then
+        return 'purple Orb'
+    elseif string.find(text, L['orange Orb']) then
+        return 'orange Orb'
+    elseif string.find(text, L['Horde Flag']) then 
+        return 'Horde Flag'
+    elseif string.find(text, L['Alliance Flag']) then
+        return 'Alliance Flag'
+    elseif string.find(text, L['Flag']) then
+        return 'Flag'
+    end
+end
+
+
 
 --------------------CALLBACKS-------------------
 function addon:checkDead()
@@ -938,7 +1142,9 @@ end
 function addon:refreshFrames(force)
     if not refreshFrames and not force then return end
     refreshFrames = false
-    -- self:Debug('Refreshing Frames')
+    if UnitIsDeadOrGhost('player') then 
+        addon:Debug('Refreshing Frames While Player Dead.')
+    end
     local nameplates = C_NamePlate.GetNamePlates()
     local remainingNameplates = {}
     for i, frame in pairs(nameplates) do
@@ -964,7 +1170,7 @@ function addon:refreshFrames(force)
     --add new frames
     for name, unit in pairs(remainingNameplates) do
         if UnitIsPlayer(unit) and not UnitIsUnit(unit, 'player') then
-            self:Debug('Frame refresh adding frame', name, unit)
+            -- self:Debug('Frame refresh adding frame', name, unit)
             self:NAME_PLATE_UNIT_ADDED(unit)
         end
     end
@@ -1062,6 +1268,9 @@ addon:RegisterEvent('PLAYER_DEAD')
 addon:RegisterEvent('PLAYER_ALIVE')
 addon:RegisterEvent('PLAYER_UNGHOST')
 addon:RegisterEvent('ADDON_LOADED')
+addon:RegisterEvent('CHAT_MSG_BG_SYSTEM_ALLIANCE')
+addon:RegisterEvent('CHAT_MSG_BG_SYSTEM_HORDE')
+TeamfightCounterWindow:SetScript('OnUpdate', function(self, elapsed) addon:ON_UPDATE(elapsed) end)
 selfCounter:reset()
 addon:createTeamfightCounter()
 
@@ -1077,31 +1286,37 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     -- addon:showGroupsOnMap()
     -- addon:getBattlegroundPlayerData()
 
-    -- TFC.profiler:print()
+    --localization test
+    -- print(GetLocale())
+    -- print(L['captured'])
 
+    --print map id
+    addon:Debug('Map ID:', C_Map.GetBestMapForUnit('player'))
 
-    -- if counters['tester1-test'] == nil then
-    --     local c = Counter:new('tester1-test')
-    --     c:updatePlayer({name = 'tester1', realm = 'test', fullName = 'tester1-test', isAlly = false, class='PRIEST'})
-    --     c:addPlayer({name = 'tester2', realm = 'test', fullName = 'tester2-test', isAlly = true, class="MONK"})
-    --     counters['tester1-test'] = c
-
-    --     counters['tester2-test'] = Counter:new('tester2-test')
-    --     counters['tester2-test']:updatePlayer({name = 'tester2', realm = 'test', fullName = 'tester2-test', isAlly = true, class="MONK"})
-
-    --     counters['tester3-test'] = Counter:new('tester3-test')
-    --     counters['tester3-test']:updatePlayer({name = 'tester3', realm = 'test', fullName = 'tester3-test', isAlly = true, class="DRUID"})
-    -- else
-    --     counters['tester3-test']:addPlayer({name = 'tester2', realm = 'test', fullName = 'tester2-test', isAlly = true, class="MONK"})
-    -- end
-
-    for i, c in pairs(groups) do
-        addon:Debug ('Group ' .. i .. ": ".. c.allyCount.."v"..c.enemyCount .. ". Zone: " .. (c.zone or ""))
-        for key,f in pairs(c.players) do
-            addon:Debug("Player: ", key, "Zone:",f.zone, 'Class', f.class)
-        end
+    for i = 1, 4 do
+        local uiPosx, uiPosy, flagTexture = C_PvP.GetBattlefieldFlagPosition(i, Map)
+        addon:Debug("Flag", uiPosx, uiPosy, flagTexture)
     end
 
+    --loop and print local variable flagCarriers
+    -- for i, v in pairs(flagCarriers) do
+    --     addon:Debug('Flag Carrier', i, v)
+    -- end
+    -- for i, v in pairs(flagCarriers.groups) do
+    --     addon:Debug('Flag Groups', i, v)
+    -- end
+
+
+    -- TFC.profiler:print()
+
+    
+    for name,c in pairs(selfCounter.frames) do
+        addon:Debug ('Self Frames ', name, c.isAlly, c.class)
+    end
+    for name,c in pairs(selfCounter.players) do
+        addon:Debug ('Self Players ', name, c.isAlly, c.class)
+    end
+    
     -- for name,c in pairs(counters) do
     --     addon:Debug ('Counter ' .. name.. "(".. c.name .."): ".. c.allyCount.."v"..c.enemyCount.. ". Zone: " .. (c.zone or ""))
     --     for key,f in pairs(c.players) do
@@ -1109,10 +1324,12 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     --     end
     -- end
 
-    -- for name,c in pairs(selfCounter.frames) do
-    --     addon:Debug ('Frames ', name, c.isAlly, c.class)
+    -- for i, c in pairs(groups) do
+    --     addon:Debug ('Group ' .. i .. ": ".. c.allyCount.."v"..c.enemyCount .. ". Zone: " .. (c.zone or ""))
+    --     for key,f in pairs(c.players) do
+    --         addon:Debug("Player: ", key, "Zone:",f.zone, 'Class', f.class)
+    --     end
     -- end
-
 
     -- local POIs = addon:getPOIs()
     -- for i,v in pairs(POIs) do
@@ -1122,5 +1339,7 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     -- GetAreaPOIInfo
 
 
+
+    -- WG map: 1339. Horde flag texture id (carried by alliance): 137218. Alliance flag: 137200
 
 end)
