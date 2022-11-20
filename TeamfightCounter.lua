@@ -1,5 +1,5 @@
 local AddonName, TFC = ...
-L = TFC.L
+local L = TFC.L
 _G['TeamfightCounter'] = CreateFrame('Frame')
 local addon = _G['TeamfightCounter']
 local TeamfightCounterWindow = _G['TeamfightCounterWindow']
@@ -487,7 +487,7 @@ function addon:showGroupOnMap(group, x, y, parentFrameName)
 
     local textName = "TFCGroupText" .. group['id']
     if frameMain[textName] == nil then
-        local frameText = frameMain:CreateFontString("Frame", textName, frameMain)
+        local frameText = frameMain:CreateFontString(nil, nil, nil)
         frameText:SetFont("Fonts\\FRIZQT__.TTF", fontSize*TFC.settings.textScale, "OUTLINE")
         frameText:SetPoint("CENTER", 0, 0)
         frameMain[textName] = frameText
@@ -1169,7 +1169,7 @@ function addon:refreshFrames(force)
     end
     --add new frames
     for name, unit in pairs(remainingNameplates) do
-        if UnitIsPlayer(unit) and not UnitIsUnit(unit, 'player') then
+        if UnitIsPlayer(unit) and not UnitIsUnit(unit, 'player') and CheckInteractDistance(unit, 4) then
             -- self:Debug('Frame refresh adding frame', name, unit)
             self:NAME_PLATE_UNIT_ADDED(unit)
         end
@@ -1287,16 +1287,20 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     -- addon:getBattlegroundPlayerData()
 
     --localization test
-    -- print(GetLocale())
+    -- print('locale', GetLocale())
     -- print(L['captured'])
 
     --print map id
-    addon:Debug('Map ID:', C_Map.GetBestMapForUnit('player'))
+    -- addon:Debug('Map ID:', C_Map.GetBestMapForUnit('player'))
 
-    for i = 1, 4 do
-        local uiPosx, uiPosy, flagTexture = C_PvP.GetBattlefieldFlagPosition(i, Map)
-        addon:Debug("Flag", uiPosx, uiPosy, flagTexture)
-    end
+    -- for i = 1, 4 do
+    --     local uiPosx, uiPosy, flagTexture = C_PvP.GetBattlefieldFlagPosition(i, Map)
+    --     addon:Debug("Flag", uiPosx, uiPosy, flagTexture)
+    -- end
+
+
+
+
 
     --loop and print local variable flagCarriers
     -- for i, v in pairs(flagCarriers) do
@@ -1310,12 +1314,22 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     -- TFC.profiler:print()
 
     
-    for name,c in pairs(selfCounter.frames) do
-        addon:Debug ('Self Frames ', name, c.isAlly, c.class)
-    end
-    for name,c in pairs(selfCounter.players) do
-        addon:Debug ('Self Players ', name, c.isAlly, c.class)
-    end
+    -- for name,c in pairs(selfCounter.frames) do
+    --     addon:Debug ('Self Frames ', name, c.isAlly, c.class)
+    -- end
+    -- for name,c in pairs(selfCounter.players) do
+    --     addon:Debug ('Self Players ', name, c.isAlly, c.class)
+    -- end
+
+    -- local facing
+
+    -- if GetCVar("rotateMinimap") == "0" then
+    --     facing = select(49,Minimap:GetChildren()):GetFacing()
+    -- else
+    --     facing = MiniMapCompassRing:GetFacing()
+    -- end
+
+    -- addon:Debug('Facing', facing)
     
     -- for name,c in pairs(counters) do
     --     addon:Debug ('Counter ' .. name.. "(".. c.name .."): ".. c.allyCount.."v"..c.enemyCount.. ". Zone: " .. (c.zone or ""))
@@ -1337,9 +1351,5 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     --     print(v, info.name, info.position:GetXY())
     -- end
     -- GetAreaPOIInfo
-
-
-
-    -- WG map: 1339. Horde flag texture id (carried by alliance): 137218. Alliance flag: 137200
 
 end)

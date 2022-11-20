@@ -1,8 +1,8 @@
-## Interface: 90205
+## Interface: 100002
 ## Author: Cubelicious
 ## Title: TeamfightCounter
 ## Notes:
-## Version: v0.1
+## Version: v1
 ## X-Category: PvP/Battlegrounds
 ## OptionalDeps: REPorter
 ## SavedVariables: TeamfightCounterDB
