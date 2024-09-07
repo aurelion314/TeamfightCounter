@@ -7,6 +7,7 @@ TFC.version = 0.1
 TFC.addon = addon
 TFC.timer = 0
 TFC.timeSinceLastUpdate = 0
+TFC.texturePath = "Interface\\AddOns\\TeamfightCounter\\Textures\\"
 
 local removedList = {}
 local playerData = nil
@@ -29,6 +30,7 @@ local group = {}
 ----------------------- SelfCounter tracks who you see
 local selfCounter = {}
 function selfCounter:addFrame(frame)
+    if frame.fullName == nil then addon:Debug("addFrame called with no fullName") end
     if self.frames[frame.fullName] == nil then
         self.frames[frame.fullName] = frame
         self:addPlayer(frame)
@@ -36,6 +38,7 @@ function selfCounter:addFrame(frame)
 end
 
 function selfCounter:removeFrame(frame)
+    if frame.fullName == nil then addon:Debug("removeFrame called with no fullName") end
     if self.frames[frame.fullName] ~= nil then
         self.frames[frame.fullName] = nil
         if self.nearby[frame.fullName] == nil then
@@ -45,6 +48,7 @@ function selfCounter:removeFrame(frame)
 end
 
 function selfCounter:addNearbyRaidMember(player)
+    if player.fullName == nil then addon:Debug("addNearbyRaidMember called with no fullName") end
     if self.nearby[player.fullName] == nil then
         self.nearby[player.fullName] = player
         self:addPlayer(player)
@@ -52,6 +56,7 @@ function selfCounter:addNearbyRaidMember(player)
 end
 
 function selfCounter:removeNearbyRaidMember(player)
+    if player.fullName == nil then addon:Debug("removeNearbyRaidMember called with no fullName") end
     if self.nearby[player.fullName] ~= nil then
         self.nearby[player.fullName] = nil
         if self.frames[player.fullName] == nil then
@@ -61,6 +66,10 @@ function selfCounter:removeNearbyRaidMember(player)
 end
 
 function selfCounter:addPlayer(player)
+    if player.fullName == nil then 
+        addon:Debug("addPlayer called with no fullName") 
+        return
+    end
     if self.players[player.fullName] == nil then
         self.players[player.fullName] = player
         if not player.class then addon:Debug("No class for", player.fullName) end
@@ -69,6 +78,7 @@ function selfCounter:addPlayer(player)
 end
 
 function selfCounter:removePlayer(player)
+    if player.fullName == nil then addon:Debug("removePlayer called with no fullName") end
     if self.players[player.fullName] ~= nil then
         self.players[player.fullName] = nil
         if not player.class then addon:Debug("No class for", player.fullName) end
@@ -95,7 +105,7 @@ function selfCounter:reset()
 end
 
 ------------------Counter tracks who each ally sees. Updated by addonMsgs
-Counter = {}
+local Counter = {}
 function Counter:new(name)
     addon:updateSelfPlayer()
     local obj = {}
@@ -565,7 +575,7 @@ function addon:showClassBlips(group, parentFrame, reaction)
             if player.class then
                 playerNum = playerNum + 1
                 x, y = -(blipWidth * (playerCount + 1)) / 2 + blipWidth * playerNum, 0
-                self:showClassBlip(parentFrame, player, x, y, 'enemy', playerNum, "Interface\\Addons\\TeamfightCounter\\textures\\BlipCombat")
+                self:showClassBlip(parentFrame, player, x, y, 'enemy', playerNum, "BlipCombat")
             end
         end
     end
@@ -576,9 +586,9 @@ function addon:showClassBlip(parentFrame, player, x, y, faction, playerNum, text
     if parentFrame.blips[textureName] == nil then
         parentFrame.blips[textureName] = parentFrame:CreateTexture("TFCBlipTexture" .. parentFrame:GetName() .. faction .. playerNum)
         if not texture then
-            parentFrame.blips[textureName]:SetTexture("Interface\\Addons\\TeamfightCounter\\textures\\BlipNormal")
+            parentFrame.blips[textureName]:SetTexture(TFC.texturePath .. "BlipNormal")
         else
-            parentFrame.blips[textureName]:SetTexture(texture)
+            parentFrame.blips[textureName]:SetTexture(TFC.texturePath .. texture)
         end
         parentFrame.blips[textureName]:SetWidth(10*TFC.settings.blipScale)
         parentFrame.blips[textureName]:SetHeight(10*TFC.settings.blipScale)
@@ -777,7 +787,7 @@ function addon:checkNearbyAlly()
         local unit = "raid" .. i
         local player = addon:getUnitDetails(unit)
         if player then
-            if CheckInteractDistance(unit, 4) and not UnitIsDeadOrGhost(unit) then
+            if addon:inRange(unit) and not UnitIsDeadOrGhost(unit) then
                 selfCounter:addNearbyRaidMember(player)
             else
                 selfCounter:removeNearbyRaidMember(player)
@@ -785,6 +795,13 @@ function addon:checkNearbyAlly()
         end
     end
 end
+
+function addon:inRange(unit)
+    -- use to be CheckInteractDistance(unit, 4) 
+    -- Shoot = 5019
+    return C_Spell.IsSpellInRange(5019, unit) == 1
+end
+
 
 function addon:getUnitDetails(unit)
     if not UnitIsPlayer(unit) then
@@ -798,7 +815,7 @@ function addon:getUnitDetails(unit)
     details["isAlly"] = details["reaction"] and (details["reaction"] > 4) or nil
     details["isPlayer"] = UnitIsPlayer(unit)
     details["class"] = select(2, UnitClass(unit))
-    details["isClose"] = CheckInteractDistance(unit, 4)
+    details["isClose"] = addon:inRange(unit)
     details["isTarget"] = UnitIsUnit(unit, 'target')
     details["isDead"] = UnitIsDeadOrGhost(unit)
     details["unit"] = unit
@@ -816,7 +833,7 @@ function addon:getUnitDetails(unit)
     end
 
     --For some reason we get an occasional plate with an 'unknown' name. Filter those out.
-    if details['name'] == 'Unknown' or details['name'] == 'Unbekannt' or not details['fullName'] then
+    if details['name'] == L['Unknown'] or not details['fullName'] then
         refreshFrames = true
         return nil
     end
@@ -950,6 +967,8 @@ end
 
 function addon:NAME_PLATE_UNIT_REMOVED(unit)
     -- self:Debug('Frame Removed', unit, self:getFullName(unit))
+    if UnitIsUnit(unit, 'player') then return end
+
     local frame = self:getUnitDetails(unit)
     if not frame then return end
     --If the unit is dead, remove from list immediately
@@ -1144,6 +1163,7 @@ function addon:refreshFrames(force)
     refreshFrames = false
     if UnitIsDeadOrGhost('player') then 
         addon:Debug('Refreshing Frames While Player Dead.')
+        selfCounter:reset() -- Dieing doesn't trigger a frame removal event, and also causes issues recognizing factions. Simply clear frames.
     end
     local nameplates = C_NamePlate.GetNamePlates()
     local remainingNameplates = {}
@@ -1169,7 +1189,7 @@ function addon:refreshFrames(force)
     end
     --add new frames
     for name, unit in pairs(remainingNameplates) do
-        if UnitIsPlayer(unit) and not UnitIsUnit(unit, 'player') and CheckInteractDistance(unit, 4) then
+        if UnitIsPlayer(unit) and not UnitIsUnit(unit, 'player') and addon:inRange(unit) then
             -- self:Debug('Frame refresh adding frame', name, unit)
             self:NAME_PLATE_UNIT_ADDED(unit)
         end
@@ -1228,11 +1248,6 @@ end
 function addon:createTeamfightCounter()
     if displayFrame == nil then
         displayFrame = TeamfightCounterWindow
-        -- displayFrame.displayAllyDiff = displayFrame:CreateFontString(nil,"OVERLAY", "GameTooltipText")
-        -- displayFrame.displayAllyDiff:SetText("(+1)")
-        -- displayFrame.displayAllyDiff:SetPoint("TOPLEFT",15,0)
-        -- displayFrame.displayAllyDiff:SetTextColor(0,1,0,1)
-        -- displayFrame.displayAllyDiff:SetFont("Fonts\\FRIZQT__.TTF", 16, "THICKOUTLINE")
         displayFrame.displayEnemy = displayFrame:CreateFontString(nil, "OVERLAY", "GameTooltipText")
         displayFrame.displayEnemy:SetPoint("TOP", 0, 20)
         displayFrame.displayEnemy:SetText("(1v0)")
@@ -1277,6 +1292,7 @@ addon:createTeamfightCounter()
 ------------ Testing
 displayFrame:SetScript("OnMouseDown", function(self, arg1)
     if not TFC.settings.showDebug then return end
+    -- TFC:showOnBGE()
     -- addon:getPOIs(true)
     -- refreshFrames = true
     -- addon:updateSelfPlayer()
