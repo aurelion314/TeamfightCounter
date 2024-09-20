@@ -17,7 +17,7 @@ local displayFrame
 local counters = {}
 local groups = {}
 local POIList = nil
-local selfPlayer = nil
+local selfPlayer = {}
 local deadEnemies = {}
 local missingEnemies = {}
 local refreshFrames = false
@@ -37,12 +37,12 @@ function selfCounter:addFrame(frame)
     end
 end
 
-function selfCounter:removeFrame(frame, immediate)
+function selfCounter:removeFrame(frame)
     if frame.fullName == nil then addon:Debug("removeFrame called with no fullName") end
     if self.frames[frame.fullName] ~= nil then
         self.frames[frame.fullName] = nil
         if self.nearby[frame.fullName] == nil then
-            self:removePlayer(frame, immediate)
+            self:removePlayer(frame)
         end
     end
 end
@@ -77,18 +77,14 @@ function selfCounter:addPlayer(player)
     end
 end
 
-function selfCounter:removePlayer(player, immediate)
+function selfCounter:removePlayer(player)
     if player.fullName == nil then addon:Debug("removePlayer called with no fullName") end
     if self.players[player.fullName] ~= nil then
         self.players[player.fullName] = nil
         if not player.class then addon:Debug("No class for", player.fullName) end
         if player.isDead then
             if deadEnemies[player.fullName] == nil then
-                if immediate then
-                    deadEnemies[player.fullName] = GetTime() - 60
-                else
-                    deadEnemies[player.fullName] = GetTime()
-                end
+                deadEnemies[player.fullName] = GetTime()
             end
             addon:SendMsg(player, "dead")
         else
@@ -103,6 +99,7 @@ function selfCounter:reset()
             self:removePlayer(player)
         end
     end
+    addon:Debug("SelfCounter reset")
     self.players = {}
     self.frames = {}
     self.nearby = {}
@@ -137,7 +134,9 @@ function Counter:new(name)
 end
 
 function Counter:addPlayer(player)
+    addon:Debug("Counter " .. self.name .. " addPlayer", player.fullName)
     if self.players[player.fullName] then
+        addon:Debug("Counter " .. self.name .. " already has player", player.fullName)
         return
     end
     self.players[player.fullName] = player
@@ -154,17 +153,17 @@ function Counter:addPlayer(player)
 end
 
 function Counter:updatePlayer(player)
-    if not self.players[player.fullName] then
+    if self.players[player.fullName] == nil then
         self:addPlayer(player)
         return
     end
+    addon:Debug("Counter" .. self.name .. " updatePlayer", player.fullName)
     self.players[player.fullName] = player
     self.zone = player.zone
 end
 
 function Counter:removePlayer(player)
     if self.players[player.fullName] == nil then
-        addon:Debug("(Counter " .. self.name .. ") Can't remove because not in list: ", player.fullName)
         return
     end
     if self.players[player.fullName].isAlly then
@@ -174,6 +173,7 @@ function Counter:removePlayer(player)
     end
     self.zone = player.zone
 
+    addon:Debug("Counter " .. self.name .. " removePlayer", player.fullName)
     self.players[player.fullName] = nil
 end
 
@@ -250,6 +250,7 @@ function addon:updateSelfPlayer(force)
 
     if doUpdate then
         local updateType = player['isDead'] and 'remove' or 'update'
+        addon:Debug('Self Update', player.fullName, player.isDead, player.class, updateType)
         -- self:Debug('Self Update', player.fullName, updateType, player.isDead, player.class)
         selfPlayer = player
         self:SendMsg(player, updateType)
@@ -539,10 +540,10 @@ function addon:showGroups()
             groupText:SetPoint("CENTER", 0, 0)
             groupText:SetTextColor(0.5, 0.5, 0.5, 1)
             groupText:SetText('1v0')
-            groupText:SetFont("Fonts\\FRIZQT__.TTF", 14*TFC.settings.textScale, "OUTLINE")
         end
         local groupCounterFrame = displayFrame['displayGroup' .. i]
         local groupText = groupCounterFrame['groupText']
+        groupText:SetFont("Fonts\\FRIZQT__.TTF", 14*TFC.settings.textScale, "OUTLINE")
         --set color depending on ally vs enemy
         if group.allyCount > group.enemyCount then
             groupText:SetTextColor(unpack(TFC.settings.winColor))
@@ -923,9 +924,11 @@ function addon:checkNearbyAlly()
 end
 
 function addon:inRange(unit)
-    -- use to be CheckInteractDistance(unit, 4) 
-    -- Shoot = 5019
-    return C_Spell.IsSpellInRange(5019, unit) == 1
+    -- Are we out of combat?
+    if UnitAffectingCombat("player") then
+        return nil
+    end
+    return CheckInteractDistance(unit, 4)
 end
 
 
@@ -938,7 +941,8 @@ function addon:getUnitDetails(unit)
     details['fullName'] = self:getFullName(unit, true)
     details["name"], details["realm"] = UnitName(unit)
     details["reaction"] = UnitReaction(unit, "player")
-    details["isAlly"] = details["reaction"] and (details["reaction"] > 4) or nil
+    -- details["isAlly"] = details["reaction"] and (details["reaction"] > 4) or nil
+    details["isAlly"] = not UnitIsEnemy("player", unit)
     details["isPlayer"] = UnitIsPlayer(unit)
     details["class"] = select(2, UnitClass(unit))
     details["isClose"] = addon:inRange(unit)
@@ -1039,6 +1043,7 @@ function addon:CHAT_MSG_ADDON(prefix, msg, channel, sender)
         elseif msgType == "remove" then
             counters[sender]:removePlayer(player)
         elseif msgType == "update" then
+            addon:Debug('Updating player:', player.fullName)
             counters[sender]:updatePlayer(player)
         elseif msgType == "dead" then
             counters[sender]:removePlayer(player)
@@ -1056,18 +1061,13 @@ function addon:ZONE_CHANGED_NEW_AREA()
     addon:Debug('Zone Area Changed')
     POIList = nil
     addon:refreshMap(true)
-    selfPlayer = {}
-    self:updateSelfPlayer()
     self:getBattlegroundPlayerData(true)
-    selfCounter:reset()
     removedList = {}
     flagCarriers = {}
-    counters = {}
-    counters[selfPlayer.fullName] = Counter:new(selfPlayer.fullName)
-    refreshFrames = true
+    
+    addon:resetCouters()
 
     self:countNearbyFactions()
-    self:refreshCallback()
 end
 
 function addon:ZONE_CHANGED()
@@ -1081,7 +1081,7 @@ function addon:NAME_PLATE_UNIT_ADDED(unit)
     local frame = self:getUnitDetails(unit)
 
     --Ignore in these cases
-    if not frame or (frame['isTarget'] and not frame['isClose']) or frame['isDead'] or frame['reaction'] == nil then return end
+    if not frame or (frame['isTarget'] and not frame['isClose']) or frame['isDead'] or frame['isAlly'] == nil then return end
 
     -- self:Debug('Adding', unit, frame.fullName)
     selfCounter:addFrame(frame)
@@ -1099,7 +1099,7 @@ function addon:NAME_PLATE_UNIT_REMOVED(unit)
     if not frame then return end
     --If the unit is dead, remove from list immediately
     if frame['isDead'] or UnitIsDeadOrGhost('player') then
-        selfCounter:removeFrame(frame, true)
+        selfCounter:removeFrame(frame)
         self:countNearbyFactions()
     else
         --if alive, set a callback to remove it in a few seconds.
@@ -1114,6 +1114,7 @@ end
 
 function addon:PLAYER_DEAD()
     self:updateSelfPlayer()
+    self:refreshFrames(true)
 end
 
 function addon:PLAYER_UNGHOST()
@@ -1121,11 +1122,7 @@ function addon:PLAYER_UNGHOST()
 end
 
 function addon:PLAYER_ENTERING_WORLD()
-    local fullName = addon:getFullName('player', true)
-    counters = {}
-    counters[fullName] = Counter:new(fullName)
-
-    self:refreshCallback()
+    addon:resetCouters()
 end
 
 function addon:ADDON_LOADED(addon)
@@ -1146,6 +1143,9 @@ function addon:ADDON_LOADED(addon)
         --     InterfaceOptionsFrame_OpenToCategory(TFCMainOptions)
         -- end
 
+        self:createTeamfightCounter()
+        displayFrame:SetScript("OnMouseDown", TFCCounterFrameOnClick)
+        selfCounter:reset()
         self:countNearbyFactions()
 
         TFC.classOrder = {}
@@ -1159,6 +1159,8 @@ function addon:ADDON_LOADED(addon)
             end
         end
 
+        
+        
         self:Debug("Loaded")
     end
 end
@@ -1284,6 +1286,14 @@ function addon:removedCallback(clear)
     self:countNearbyFactions()
 end
 
+function addon:resetCouters()
+    selfCounter:reset()
+    counters = {}
+    selfPlayer = {}
+    self:updateSelfPlayer()
+    self:refreshCallback()
+end
+
 function addon:refreshFrames(force)
     if not refreshFrames and not force then return end
     refreshFrames = false
@@ -1315,7 +1325,7 @@ function addon:refreshFrames(force)
     end
     --add new frames
     for name, unit in pairs(remainingNameplates) do
-        if UnitIsPlayer(unit) and not UnitIsUnit(unit, 'player') and addon:inRange(unit) then
+        if UnitIsPlayer(unit) and not UnitIsUnit(unit, 'player') then
             -- self:Debug('Frame refresh adding frame', name, unit)
             self:NAME_PLATE_UNIT_ADDED(unit)
         end
@@ -1354,12 +1364,17 @@ function addon:countNearbyFactions()
     local enemy = 0
     for name, f in pairs(selfCounter.frames) do
         if f.isPlayer then
-            if f.reaction > 4 then
+            if f.isAlly then
                 friendly = friendly + 1
-            end
-            if f.reaction < 4 then
+            else
                 enemy = enemy + 1
             end
+            -- if f.reaction > 4 then
+            --     friendly = friendly + 1
+            -- end
+            -- if f.reaction < 4 then
+            --     enemy = enemy + 1
+            -- end
         end
     end
     local nearby = 0
@@ -1412,20 +1427,27 @@ addon:RegisterEvent('ADDON_LOADED')
 addon:RegisterEvent('CHAT_MSG_BG_SYSTEM_ALLIANCE')
 addon:RegisterEvent('CHAT_MSG_BG_SYSTEM_HORDE')
 TeamfightCounterWindow:SetScript('OnUpdate', function(self, elapsed) addon:ON_UPDATE(elapsed) end)
-selfCounter:reset()
-addon:createTeamfightCounter()
 
 ------------ Testing
-displayFrame:SetScript("OnMouseDown", function(self, arg1)
+function TFCCounterFrameOnClick(self, button)
     if not TFC.settings.showDebug then return end
     
-    addon:Debug(unpack(TFC.settings.winColor))
-    addon:Debug(unpack(TFC.settings.loseColor))
+    addon:Debug('Counters:')
+    TFC.utils:printTable(counters)
+    addon:Debug('Self Counter:')
+    TFC.utils:printTable(selfCounter)
+    -- selfCounter:reset()
+    -- counters = {}
+    -- addon:updateSelfPlayer(true)
+    -- addon:Debug('Counter Reset')
+
+    -- addon:updateGroups()
+    -- addon:Debug(unpack(TFC.settings.winColor))
+    -- addon:Debug(unpack(TFC.settings.loseColor))
     -- addon:getPOIs(true)
     -- refreshFrames = true
     -- addon:updateSelfPlayer()
     -- addon:checkNearbyAlly()
-    -- addon:updateGroups()
     -- addon:showGroups()
     -- addon:showGroupsOnMap()
     -- addon:getBattlegroundPlayerData()
@@ -1456,14 +1478,6 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
 
 
     -- TFC.profiler:print()
-
-    
-    -- for name,c in pairs(selfCounter.frames) do
-    --     addon:Debug ('Self Frames ', name, c.isAlly, c.class)
-    -- end
-    -- for name,c in pairs(selfCounter.players) do
-    --     addon:Debug ('Self Players ', name, c.isAlly, c.class)
-    -- end
 
     -- local facing
 
@@ -1496,4 +1510,4 @@ displayFrame:SetScript("OnMouseDown", function(self, arg1)
     -- end
     -- GetAreaPOIInfo
 
-end)
+end

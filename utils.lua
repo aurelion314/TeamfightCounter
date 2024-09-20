@@ -31,6 +31,18 @@ function utils:gsplit(text, pattern, plain)
     end
 end
 
+function utils:printTable(t, indent)
+    indent = indent or 0
+    for k, v in pairs(t) do
+        if type(v) == "table" then
+            print(string.rep("  ", indent) .. k .. ":")
+            self:printTable(v, indent + 1)
+        else
+            print(string.rep("  ", indent) .. k .. ": " .. tostring(v))
+        end
+    end
+end
+
 --custom stringsplit that works when there is no character between separators
 function utils:splitString(text, pattern, plain)
     TFC.profiler:start("splitString")
