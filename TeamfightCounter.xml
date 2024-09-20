@@ -7,9 +7,19 @@
 		<Scripts>
 			<OnLoad>
 				self:RegisterForDrag("LeftButton");
+				
+				-- Check if position saving is enabled and restore position
+				if TeamfightCounterDB and TeamfightCounterDB.useSavedPosition and TeamfightCounterDB.framePosition then
+					self:ClearAllPoints();
+					self:SetPoint(unpack(TeamfightCounterDB.framePosition));
+				end
 			</OnLoad>
 			<OnDragStart>self:StartMoving();</OnDragStart>
- 			<OnDragStop>self:StopMovingOrSizing();</OnDragStop>
+			<OnDragStop>
+				self:StopMovingOrSizing();
+				local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint();
+				TeamfightCounterDB.framePosition = { point, xOfs, yOfs };
+			</OnDragStop>
 		</Scripts>
 		<Frames>
 			

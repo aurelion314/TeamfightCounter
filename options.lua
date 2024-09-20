@@ -40,6 +40,74 @@ TFC.MainOptionTable = {
 					width = "single",
 					order = 3,
 				},
+				useSavedPosition = {
+					name = "Save Position",
+					desc = "Store/Configure position via addon data. Works across character. If unchecked, the frame uses WoW's default handling of position, which is per character and may reset with updates.",
+					type = "toggle",
+					width = "single",
+					order = 4,
+					set = function(info, value)
+						TeamfightCounterDB.useSavedPosition = value
+					end,
+					get = function(info)
+						return TeamfightCounterDB.useSavedPosition
+					end,
+				},
+				framePosition = {
+					name = "Frame Position",
+					type = "group",
+					inline = true,
+					order = 5,
+					disabled = function(info) return not TFC.settings.showFrame or not TeamfightCounterDB.useSavedPosition end,
+					args = {
+						point = {
+							name = "Point",
+							type = "select",
+							width = "full",
+							order = 0,
+							values = { CENTER = "Center", TOP = "Top", BOTTOM = "Bottom", LEFT = "Left", RIGHT = "Right", TOPLEFT = "Top Left", TOPRIGHT = "Top Right", BOTTOMLEFT = "Bottom Left", BOTTOMRIGHT = "Bottom Right" },
+							set = function(info, value)
+								TeamfightCounterDB.framePosition[1] = value
+								_G['TeamfightCounterWindow']:SetPoint(unpack(TeamfightCounterDB.framePosition))
+							end,
+							get = function(info)
+								return TeamfightCounterDB.framePosition[1]
+							end,
+						},
+						x = {
+							name = "X",
+							type = "range",
+							width = "full",
+							order = 1,
+							min = -1000,
+							max = 1000,
+							step = 1,
+							set = function(info, value)
+								TeamfightCounterDB.framePosition[2] = value
+								_G['TeamfightCounterWindow']:SetPoint(unpack(TeamfightCounterDB.framePosition))
+							end,
+							get = function(info)
+								return TeamfightCounterDB.framePosition[2]
+							end,
+						},
+						y = {
+							name = "Y",
+							type = "range",
+							width = "full",
+							order = 2,
+							min = -1000,
+							max = 1000,
+							step = 1,
+							set = function(info, value)
+								TeamfightCounterDB.framePosition[3] = value
+								_G['TeamfightCounterWindow']:SetPoint(unpack(TeamfightCounterDB.framePosition))
+							end,
+							get = function(info)
+								return TeamfightCounterDB.framePosition[3]
+							end,
+						},
+					}
+				}
 			}
 		},
 		classBlips = {
@@ -60,6 +128,74 @@ TFC.MainOptionTable = {
 					type = "toggle",
 					width = "full",
 					order = 4,
+				},
+			}
+		},
+
+		bgeIntegration = {
+			type = "group",
+			name = "BGE Integration",
+			order = 3,
+			inline = true,
+			args = {
+				showBGE = {
+					name = "Show on BGE",
+					type = "toggle",
+					width = "single",
+					order = 1,
+				},
+				testBGE = {
+					name = "Test BGE",
+					desc = "Show test counts in BGE. Requires BGE to have testing toggled on.",
+					type = "toggle",
+					width = "single",
+					order = 2,
+				},
+				bgeXOffset = {
+					name = "X Offset",
+					type = "range",
+					width = "full",
+					order = 4,
+					min = -1000,
+					max = 1000,
+					step = 1,
+				},
+			}
+		},
+
+		textColors = {
+			type = "group",
+			name = "Text Colors",
+			order = 4,
+			inline = true,
+			args = {
+				winColor = {
+                    name = "Winning Color",
+                    type = "color",
+                    width = "single",
+                    order = 6,
+                    hasAlpha = true, -- Set to true if you want an alpha slider
+                    set = function(info, r, g, b, a)
+                        TFC.settings.winColor = {r, g, b, a}
+                    end,
+                    get = function(info)
+                        local color = TFC.settings.winColor
+                        return unpack(color)
+                    end,
+                },
+				loseColor = {
+					name = "Losing Color",
+					type = "color",
+					width = "single",
+					order = 7,
+					hasAlpha = true, -- Set to true if you want an alpha slider
+					set = function(info, r, g, b, a)
+						TFC.settings.loseColor = {r, g, b, a}
+					end,
+					get = function(info)
+						local color = TFC.settings.loseColor
+						return unpack(color)
+					end,
 				},
 			}
 		},
@@ -100,42 +236,6 @@ TFC.MainOptionTable = {
 		},
 	}
 }
-		-- frameSize = {
-		-- 	name = "Frame Size",
-		-- 	desc = "Scale the frame!",
-		-- 	type = "range",
-		-- 	width = "double",
-		-- 	order = 4,
-		-- 	min = 1,
-		-- 	max = 100,
-		-- 	step = 1,
-		-- 	-- set = function(_, val) RE.Settings.ArenaStatsLimit = val end,
-		-- 	-- get = function(_) return RE.Settings.ArenaStatsLimit end
-		-- },
-		-- dropdown = {
-		-- 	name = "LDB feed display mode",
-		-- 	desc = "Rating display always compares the values with the previous week.",
-		-- 	type = "select",
-		-- 	width = "double",
-		-- 	order = 5,
-		-- 	values = {
-		-- 		[1] = "Current session",
-		-- 		[2] = _G.HONOR_TODAY,
-		-- 		[3] = _G.GUILD_CHALLENGES_THIS_WEEK
-		-- 	},
-		-- 	set = function(_, val) RE.Settings.LDBMode = val; RE.LDBUpdate = true; RE:UpdateLDBTime(); RE:UpdateLDB() end,
-		-- 	get = function(_) return RE.Settings.LDBMode end
-		-- },
-		-- button = {
-		-- 	name = "Purge database",
-		-- 	desc = "WARNING! This operation is not reversible!",
-		-- 	type = "execute",
-		-- 	width = "double",
-		-- 	confirm = true,
-		-- 	order = 6,
-		-- 	func = function() _G.REFlexDatabase = {}; _G.REFlexHonorDatabase = {}; ReloadUI() end
-		-- },
-
 
 TFC.DefaultSettings = {
 	profile= {
@@ -148,7 +248,17 @@ TFC.DefaultSettings = {
 		blipScale = 1,
 		newClassOrder = false,
 		showDebug = false,
+		showBGE = true,
+		testBGE = false,
+		bgeXOffset = 30,
+		winColor = {0, 1, 0, 1},
+		loseColor = {1, 0, 0, 1},
 	}
+}
+
+TeamfightCounterDB = TeamfightCounterDB or {
+	useSavedPosition = true,
+	framePosition = { "CENTER", 0, 0 },
 }
 
 --used for class blips. Generally has melee first, ranged, healing classes, then stealth. Mostly just trying to have nice looking shading.

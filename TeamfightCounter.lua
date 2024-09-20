@@ -37,12 +37,12 @@ function selfCounter:addFrame(frame)
     end
 end
 
-function selfCounter:removeFrame(frame)
+function selfCounter:removeFrame(frame, immediate)
     if frame.fullName == nil then addon:Debug("removeFrame called with no fullName") end
     if self.frames[frame.fullName] ~= nil then
         self.frames[frame.fullName] = nil
         if self.nearby[frame.fullName] == nil then
-            self:removePlayer(frame)
+            self:removePlayer(frame, immediate)
         end
     end
 end
@@ -77,14 +77,18 @@ function selfCounter:addPlayer(player)
     end
 end
 
-function selfCounter:removePlayer(player)
+function selfCounter:removePlayer(player, immediate)
     if player.fullName == nil then addon:Debug("removePlayer called with no fullName") end
     if self.players[player.fullName] ~= nil then
         self.players[player.fullName] = nil
         if not player.class then addon:Debug("No class for", player.fullName) end
         if player.isDead then
             if deadEnemies[player.fullName] == nil then
-                deadEnemies[player.fullName] = GetTime()
+                if immediate then
+                    deadEnemies[player.fullName] = GetTime() - 60
+                else
+                    deadEnemies[player.fullName] = GetTime()
+                end
             end
             addon:SendMsg(player, "dead")
         else
@@ -348,7 +352,129 @@ function addon:updateGroups()
     --Now that we have the group teamfight counts, render them to screen
     self:showGroups()
     self:showGroupsOnMap()
+
+    -- Update BGE with group counts
+    self:updateBGE()
 end
+
+function addon:updateBGE()
+    -- Access the BattlegroundEnemies addon
+    local battlegroundEnemies = _G['BattleGroundEnemies']
+    local enemyMainFrame = battlegroundEnemies and battlegroundEnemies['Enemies']
+    if not enemyMainFrame then
+        -- BGE is not loaded or not in a battleground
+        return
+    end
+
+    if not TFC.settings.showBGE then
+        -- BGE integration is disabled. Ensure frame is hidden.
+        for playerName, playerButton in pairs(enemyMainFrame.Players) do
+            if playerButton.groupTextFrame then
+                playerButton.groupTextFrame:Hide()
+            end
+        end
+        return
+    end
+
+    local groups = groups
+    if TFC.settings.testBGE then
+        -- Testing: Add some test groups
+        groups = {
+            {
+                allyCount = 3,
+                enemyCount = 2,
+                players = {
+                    ["PlayerOne-RealmName"] = true,
+                    ["Enemy2-Realm2"] = true,
+                },
+            },
+            {
+                allyCount = 1,
+                enemyCount = 1,
+                players = {
+                    ["Enemy1-Realm1"] = true,
+                },
+            },
+            {
+                allyCount = 1,
+                enemyCount = 4,
+                players = {
+                    ["Enemy3-Realm3"] = true,
+                },
+            },
+        }
+    end
+
+    -- Loop over all enemy players in BGE
+    for playerName, playerButton in pairs(enemyMainFrame.Players) do
+        -- Check if this player is in any of our groups
+        local groupFound = false
+        for _, group in pairs(groups) do
+            if group.players[playerName] then
+                groupFound = true
+                -- Create or update the text next to the player
+                if not playerButton.groupTextFrame then
+                    addon:makeBGEFrame(playerButton)
+                end
+                -- Position the text within the groupTextFrame
+                playerButton.groupTextFrame:SetPoint('LEFT', playerButton, 'RIGHT', TFC.settings.bgeXOffset, 0)
+                
+                -- Set the group count text
+                local text = group.allyCount .. "v" .. group.enemyCount
+                playerButton.groupText:SetText(text)
+                -- Set the color green or red depending on ally vs enemy
+                if group.allyCount > group.enemyCount then
+                    playerButton.groupText:SetTextColor(unpack(TFC.settings.winColor))
+                elseif group.allyCount < group.enemyCount then
+                    playerButton.groupText:SetTextColor(unpack(TFC.settings.loseColor))
+                else
+                    playerButton.groupText:SetTextColor(1, 1, 1, 1) -- White
+                end
+
+                -- Show Frame
+                playerButton.groupTextFrame:Show()
+                break -- No need to check other groups
+            end
+        end
+        -- If the player is not in any group, remove any existing text
+        if not groupFound and playerButton.groupTextFrame then
+            playerButton.groupTextFrame:Hide()
+        end
+    end
+end
+
+function addon:makeBGEFrame(playerButton)
+    -- Create a new Frame attached to playerButton with BackdropTemplate
+    playerButton.groupTextFrame = CreateFrame('Frame', nil, playerButton, 'BackdropTemplate')
+    -- Set frame strata and level higher than the playerButton
+    playerButton.groupTextFrame:SetFrameStrata(playerButton:GetFrameStrata())
+    playerButton.groupTextFrame:SetFrameLevel(playerButton:GetFrameLevel() + 10) -- Ensure it's above other elements
+
+    -- Set size for the frame
+    playerButton.groupTextFrame:SetSize(50, 20) -- Adjust width and height as needed
+
+    -- Position the groupTextFrame relative to the playerButton
+    playerButton.groupTextFrame:SetPoint('LEFT', playerButton, 'RIGHT', 0, 0)
+
+    -- Create the FontString attached to the new frame
+    playerButton.groupText = playerButton.groupTextFrame:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+    -- Position the text within the groupTextFrame
+    playerButton.groupText:SetPoint('CENTER', playerButton.groupTextFrame, 'CENTER', 0, 0)
+
+    -- Set the backdrop to add a background and border
+    playerButton.groupTextFrame:SetBackdrop({
+        bgFile = "Interface\\ChatFrame\\ChatFrameBackground", -- Simple background texture
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",  -- Default UI border texture
+        tile = false,
+        tileSize = 16,
+        edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    -- Set backdrop color (background) and border color
+    playerButton.groupTextFrame:SetBackdropColor(0, 0, 0, 0.9)         -- Semi-transparent black background
+    playerButton.groupTextFrame:SetBackdropBorderColor(1, 1, 1, 1)     -- Solid white border
+end
+
 
 function addon:showMissingEnemies()
     if displayFrame['missingEnemyFrame'] == nil then
@@ -419,9 +545,9 @@ function addon:showGroups()
         local groupText = groupCounterFrame['groupText']
         --set color depending on ally vs enemy
         if group.allyCount > group.enemyCount then
-            groupText:SetTextColor(0, 1, 0, 1)
+            groupText:SetTextColor(unpack(TFC.settings.winColor))
         elseif group.allyCount < group.enemyCount then
-            groupText:SetTextColor(1, 0, 0, 1)
+            groupText:SetTextColor(unpack(TFC.settings.loseColor))
         else
             groupText:SetTextColor(0.5, 0.5, 0.5, 1)
         end
@@ -973,8 +1099,7 @@ function addon:NAME_PLATE_UNIT_REMOVED(unit)
     if not frame then return end
     --If the unit is dead, remove from list immediately
     if frame['isDead'] or UnitIsDeadOrGhost('player') then
-        selfCounter:removeFrame(frame)
-        removedList[frame.fullName] = nil
+        selfCounter:removeFrame(frame, true)
         self:countNearbyFactions()
     else
         --if alive, set a callback to remove it in a few seconds.
@@ -1014,11 +1139,12 @@ function addon:ADDON_LOADED(addon)
         config:RegisterOptionsTable(AddonName, TFC.MainOptionTable)
         TFCMainOptions = dialog:AddToBlizOptions(AddonName, AddonName)
 
-        SLASH_TFC1, SLASH_TFC2 = "/tfc", "/teamfightcounter"
-        function SlashCmdList.TFC(msg, editBox)
-            InterfaceOptionsFrame_OpenToCategory(TFCMainOptions)
-            InterfaceOptionsFrame_OpenToCategory(TFCMainOptions)
-        end
+        -- This no longer works as of TWW.
+        -- SLASH_TFC1, SLASH_TFC2 = "/tfc", "/teamfightcounter"
+        -- function SlashCmdList.TFC(msg, editBox)
+        --     InterfaceOptionsFrame_OpenToCategory(TFCMainOptions)
+        --     InterfaceOptionsFrame_OpenToCategory(TFCMainOptions)
+        -- end
 
         self:countNearbyFactions()
 
@@ -1292,7 +1418,9 @@ addon:createTeamfightCounter()
 ------------ Testing
 displayFrame:SetScript("OnMouseDown", function(self, arg1)
     if not TFC.settings.showDebug then return end
-    -- TFC:showOnBGE()
+    
+    addon:Debug(unpack(TFC.settings.winColor))
+    addon:Debug(unpack(TFC.settings.loseColor))
     -- addon:getPOIs(true)
     -- refreshFrames = true
     -- addon:updateSelfPlayer()

@@ -19,7 +19,7 @@ libs\AceGUI-3.0-SharedMediaWidgets\widget.xml
 localization.lua
 Locales\deDE.lua
 
-TeamfightCounter.xml
 utils.lua
 options.lua
+TeamfightCounter.xml
 TeamfightCounter.lua
