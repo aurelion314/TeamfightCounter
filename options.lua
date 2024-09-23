@@ -1,15 +1,15 @@
-local AddonName, TFC = ...
+local addonName, addon = ...
 
-TFC.MainOptionTable = {
+addon.MainOptionTable = {
 	type = "group",
 	get = function(info)
-        return TFC.settings[info[#info]]
+        return addon.settings[info[#info]]
     end, 
 	set = function(info, value)
-        TFC.settings[info[#info]] = value
-		TFC.addon:refreshCallback()
-		TFC.addon:countNearbyFactions()
-		TFC.addon:Debug("Updated Setting", info[#info], value)
+        addon.settings[info[#info]] = value
+		addon:refreshCallback()
+		addon:countNearbyFactions()
+		addon:Debug("Updated Setting", info[#info], value)
     end,
 	args = {
 		floatingFrame = {
@@ -27,7 +27,7 @@ TFC.MainOptionTable = {
 				showOutsideInstance = {
 					name = "Show Outside Instance",
 					desc = "Show the floating frame even outside of BGs",
-					disabled = function(info) return not TFC.settings.showFrame end,
+					disabled = function(info) return not addon.settings.showFrame end,
 					type = "toggle",
 					width = "single",
 					order = 2,
@@ -35,7 +35,7 @@ TFC.MainOptionTable = {
 				frameOnBaselessMaps = {
 					name = "Only node-less maps",
 					desc = "Use floating frame instead of map based counters on maps that don't have nodes.",
-					disabled = function(info) return not TFC.settings.showFrame end,
+					disabled = function(info) return not addon.settings.showFrame end,
 					type = "toggle",
 					width = "single",
 					order = 3,
@@ -58,12 +58,12 @@ TFC.MainOptionTable = {
 					type = "group",
 					inline = true,
 					order = 5,
-					disabled = function(info) return not TFC.settings.showFrame or not TeamfightCounterDB.useSavedPosition end,
+					disabled = function(info) return not addon.settings.showFrame or not TeamfightCounterDB.useSavedPosition end,
 					args = {
 						point = {
 							name = "Point",
 							type = "select",
-							width = "full",
+							width = "single",
 							order = 0,
 							values = { CENTER = "Center", TOP = "Top", BOTTOM = "Bottom", LEFT = "Left", RIGHT = "Right", TOPLEFT = "Top Left", TOPRIGHT = "Top Right", BOTTOMLEFT = "Bottom Left", BOTTOMRIGHT = "Bottom Right" },
 							set = function(info, value)
@@ -77,7 +77,7 @@ TFC.MainOptionTable = {
 						x = {
 							name = "X",
 							type = "range",
-							width = "full",
+							width = "single",
 							order = 1,
 							min = -1000,
 							max = 1000,
@@ -93,7 +93,7 @@ TFC.MainOptionTable = {
 						y = {
 							name = "Y",
 							type = "range",
-							width = "full",
+							width = "single",
 							order = 2,
 							min = -1000,
 							max = 1000,
@@ -119,14 +119,14 @@ TFC.MainOptionTable = {
 				showClasses = {
 					name = "Show Class Blips",
 					type = "toggle",
-					width = "full",
+					width = "single",
 					order = 1,
 				},
 				showMissing = {
 					name = "Show Missing Enemies",
 					desc = "Show unaccounted for enemies at the top of the map or above the counter.",
 					type = "toggle",
-					width = "full",
+					width = "single",
 					order = 4,
 				},
 			}
@@ -154,10 +154,10 @@ TFC.MainOptionTable = {
 				bgeXOffset = {
 					name = "X Offset",
 					type = "range",
-					width = "full",
+					width = "single",
 					order = 4,
-					min = -1000,
-					max = 1000,
+					min = -400,
+					max = 400,
 					step = 1,
 				},
 			}
@@ -176,10 +176,10 @@ TFC.MainOptionTable = {
                     order = 6,
                     hasAlpha = true, -- Set to true if you want an alpha slider
                     set = function(info, r, g, b, a)
-                        TFC.settings.winColor = {r, g, b, a}
+                        addon.settings.winColor = {r, g, b, a}
                     end,
                     get = function(info)
-                        local color = TFC.settings.winColor
+                        local color = addon.settings.winColor
                         return unpack(color)
                     end,
                 },
@@ -190,10 +190,10 @@ TFC.MainOptionTable = {
 					order = 7,
 					hasAlpha = true, -- Set to true if you want an alpha slider
 					set = function(info, r, g, b, a)
-						TFC.settings.loseColor = {r, g, b, a}
+						addon.settings.loseColor = {r, g, b, a}
 					end,
 					get = function(info)
-						local color = TFC.settings.loseColor
+						local color = addon.settings.loseColor
 						return unpack(color)
 					end,
 				},
@@ -237,7 +237,7 @@ TFC.MainOptionTable = {
 	}
 }
 
-TFC.DefaultSettings = {
+addon.DefaultSettings = {
 	profile= {
 		showFrame = true,
 		showOutsideInstance = true,
@@ -250,7 +250,7 @@ TFC.DefaultSettings = {
 		showDebug = false,
 		showBGE = true,
 		testBGE = false,
-		bgeXOffset = 30,
+		bgeXOffset = 60,
 		winColor = {0, 1, 0, 1},
 		loseColor = {1, 0, 0, 1},
 	}
@@ -262,7 +262,7 @@ TeamfightCounterDB = TeamfightCounterDB or {
 }
 
 --used for class blips. Generally has melee first, ranged, healing classes, then stealth. Mostly just trying to have nice looking shading.
-TFC.classOrderOld = {
+addon.classOrderOld = {
 	"DEMONHUNTER",
 	"DEATHKNIGHT",
 	"WARRIOR",
@@ -277,7 +277,7 @@ TFC.classOrderOld = {
 	"ROGUE",
 }
 --This is a possible order that is closer to BGE. Still different but it places healing classes first, then melee, then ranged, then stealth.
-TFC.classOrderNew = {
+addon.classOrderNew = {
     "PRIEST",
     "PALADIN",
     "MONK",
