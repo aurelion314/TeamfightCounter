@@ -21,7 +21,7 @@ addon.MainOptionTable = {
 				showFrame = {
 					name = "Show Floating Frame",
 					type = "toggle",
-					width = "full",
+					width = "single",
 					order = 1,
 				},
 				showOutsideInstance = {
@@ -53,27 +53,43 @@ addon.MainOptionTable = {
 						return TeamfightCounterDB.useSavedPosition
 					end,
 				},
+				lockPosition = {
+					name = "Lock Position",
+					type = "toggle",
+					desc = "Prevent the frame from being moved by mouse.",
+					width = "single",
+					order = 5,
+					set = function(info, value)
+						TeamfightCounterDB.lockPosition = value
+						_G['TeamfightCounterWindow']:EnableMouse(not value)
+					end,
+					get = function(info)
+						return TeamfightCounterDB.lockPosition
+					end,
+				},
 				framePosition = {
 					name = "Frame Position",
 					type = "group",
 					inline = true,
-					order = 5,
+					order = 6,
 					disabled = function(info) return not addon.settings.showFrame or not TeamfightCounterDB.useSavedPosition end,
 					args = {
-						point = {
-							name = "Point",
-							type = "select",
-							width = "single",
-							order = 0,
-							values = { CENTER = "Center", TOP = "Top", BOTTOM = "Bottom", LEFT = "Left", RIGHT = "Right", TOPLEFT = "Top Left", TOPRIGHT = "Top Right", BOTTOMLEFT = "Bottom Left", BOTTOMRIGHT = "Bottom Right" },
-							set = function(info, value)
-								TeamfightCounterDB.framePosition[1] = value
-								_G['TeamfightCounterWindow']:SetPoint(unpack(TeamfightCounterDB.framePosition))
-							end,
-							get = function(info)
-								return TeamfightCounterDB.framePosition[1]
-							end,
-						},
+						-- point = {
+						-- 	name = "Point",
+						-- 	type = "select",
+						-- 	width = "single",
+						-- 	order = 0,
+						-- 	values = { CENTER = "Center", TOP = "Top", BOTTOM = "Bottom", LEFT = "Left", RIGHT = "Right", TOPLEFT = "Top Left", TOPRIGHT = "Top Right", BOTTOMLEFT = "Bottom Left", BOTTOMRIGHT = "Bottom Right" },
+						-- 	set = function(info, value)
+						-- 		TeamfightCounterDB.framePosition[1] = value
+						-- 		local position = TeamfightCounterDB.framePosition;
+						-- 		_G['TeamfightCounterWindow']:ClearAllPoints();
+						-- 		_G['TeamfightCounterWindow']:SetPoint(position[1], 'UIParent', position[1], position[2], position[3]);
+						-- 	end,
+						-- 	get = function(info)
+						-- 		return TeamfightCounterDB.framePosition[1]
+						-- 	end,
+						-- },
 						x = {
 							name = "X",
 							type = "range",
@@ -84,7 +100,9 @@ addon.MainOptionTable = {
 							step = 1,
 							set = function(info, value)
 								TeamfightCounterDB.framePosition[2] = value
-								_G['TeamfightCounterWindow']:SetPoint(unpack(TeamfightCounterDB.framePosition))
+								local position = TeamfightCounterDB.framePosition;
+								_G['TeamfightCounterWindow']:ClearAllPoints();
+								_G['TeamfightCounterWindow']:SetPoint(position[1], 'UIParent', position[1], position[2], position[3]);
 							end,
 							get = function(info)
 								return TeamfightCounterDB.framePosition[2]
@@ -100,12 +118,15 @@ addon.MainOptionTable = {
 							step = 1,
 							set = function(info, value)
 								TeamfightCounterDB.framePosition[3] = value
-								_G['TeamfightCounterWindow']:SetPoint(unpack(TeamfightCounterDB.framePosition))
+								local position = TeamfightCounterDB.framePosition;
+								_G['TeamfightCounterWindow']:ClearAllPoints();
+								_G['TeamfightCounterWindow']:SetPoint(position[1], 'UIParent', position[1], position[2], position[3]);
 							end,
 							get = function(info)
 								return TeamfightCounterDB.framePosition[3]
 							end,
 						},
+						
 					}
 				}
 			}
@@ -118,6 +139,7 @@ addon.MainOptionTable = {
 			args = {
 				showClasses = {
 					name = "Show Class Blips",
+					desc = "Class blips are the little colored circles which indicate the class of players in the fight.",
 					type = "toggle",
 					width = "single",
 					order = 1,
@@ -140,13 +162,14 @@ addon.MainOptionTable = {
 			args = {
 				showBGE = {
 					name = "Show on BGE",
+					desc = "Shows a counter next to each tracked player in BGE, helping you see which players are in or out of the fight.",
 					type = "toggle",
 					width = "single",
 					order = 1,
 				},
 				testBGE = {
 					name = "Test BGE",
-					desc = "Show test counts in BGE. Requires BGE to have testing toggled on.",
+					desc = "Show test counters in BGE. Requires BGE to have testing toggled on.",
 					type = "toggle",
 					width = "single",
 					order = 2,
@@ -259,6 +282,7 @@ addon.DefaultSettings = {
 TeamfightCounterDB = TeamfightCounterDB or {
 	useSavedPosition = true,
 	framePosition = { "CENTER", 0, 0 },
+	lockPosition = false,
 }
 
 --used for class blips. Generally has melee first, ranged, healing classes, then stealth. Mostly just trying to have nice looking shading.

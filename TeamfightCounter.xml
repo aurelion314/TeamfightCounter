@@ -9,9 +9,15 @@
 				self:RegisterForDrag("LeftButton");
 				
 				-- Check if position saving is enabled and restore position
-				if TeamfightCounterDB and TeamfightCounterDB.useSavedPosition and TeamfightCounterDB.framePosition then
-					self:ClearAllPoints();
-					self:SetPoint(unpack(TeamfightCounterDB.framePosition));
+				if TeamfightCounterDB then
+					if TeamfightCounterDB.useSavedPosition and TeamfightCounterDB.framePosition then
+						local position = TeamfightCounterDB.framePosition;
+						self:ClearAllPoints();
+						self:SetPoint(position[1], 'UIParent', position[1], position[2], position[3]);
+					end
+					if TeamfightCounterDB.lockedPosition then
+						self:EnableMouse(false);
+					end
 				end
 			</OnLoad>
 			<OnDragStart>self:StartMoving();</OnDragStart>
